@@ -625,30 +625,74 @@
 
 <div id="toast-wrap"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
+/* ============================================================
+   SUPABASE
+   ============================================================ */
+const SUPABASE_URL = 'https://ziladpnlfajtiboavwvn.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_9PPylQ1CDhMUvQFuE3nW3Q__pTIhYjb';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
 /* ============================================================
    STATE
    ============================================================ */
 const RFQ_STATUSES = ["Draft","Pending Internal Approval","Published","Open for Applications","Applications Closed","Screening in Progress","Validation in Progress","Proposal Stage Open","Evaluation in Progress","Approval Pending","Contracting","Awarded","Cancelled","Closed"];
 
-const APPLICANT_STATUSES = ["Application Received","Under Screening","Under Validation","Shortlisted","Proposal Invited","Proposal Received","Under Evaluation","Preferred Bidder","Contract Being Drafted","Awaiting Signature","Contract Signed","Onboarding","Closed"];
-const KANBAN_STAGES = ["Application Received","Under Screening","Under Validation","Shortlisted","Under Evaluation","Preferred Bidder","Contract Being Drafted","Awaiting Signature","Contract Signed","Onboarding","Closed"];
+/* Applicant pipeline — mirrors the 17-step EPC Local Procurement Hub flow.
+   Steps 1 (Publish) is RFQ-level; step 2+3 (Application+Receipt) are combined
+   into "Application Received" since receipt is instantaneous. */
+const KANBAN_STAGES = [
+  "Application Received",       // 2+3 Application / Receipt
+  "Under Screening",            // 4  Screening
+  "Under Validation",           // 5  Validation
+  "Invited to Submit Proposal", // 6  Invitation
+  "Proposal Submitted",         // 7  Submission
+  "Assigned for Evaluation",    // 8  Assign
+  "Under Evaluation",           // 9  Evaluation
+  "Recommendation Recorded",    // 10 Recommend (awaiting Approval gate)
+  "Preferred Bidder",           // 12 Status
+  "Contract Being Drafted",     // 13 Draft
+  "Awaiting Signature",         // 14 E-Sign
+  "Contract Signed",            // 15 Signed
+  "Onboarding",                 // 16 Onboard
+  "Closed"                      // 17 Close
+];
 
-const REGRET_REASONS = ["Mandatory information not supplied","Eligibility criteria not met","Validation unsuccessful","Not shortlisted","Proposal did not meet the required threshold","Another submission achieved a higher evaluation result","RFQ cancelled or withdrawn"];
+/* The 3 official regret exits from the flow diagram (red arrows) — only these
+   stages can end a case as Unsuccessful, each with its own reason pool. */
+const REGRET_POOLS = {
+  "Under Screening": ["Mandatory information not supplied","Eligibility criteria not met"],
+  "Under Validation": ["Supplier information could not be verified","Supporting evidence did not meet requirements"],
+  "Recommendation Recorded": ["Recommendation not approved by the delegated authority","Another submission achieved a higher evaluation result","Proposal did not meet the required threshold"],
+};
+
+/* Stages the diagram marks as a human decision point (orange) — these open the
+   full decision modal (name / role / conflict-of-interest / reason). Everything
+   else in KANBAN_STAGES is an automated or system step (blue/green) and advances
+   with a single click, no sign-off required. */
+const GATE_STAGES = ["Under Screening","Under Validation","Recommendation Recorded","Contract Being Drafted"];
+const GATE_QUESTION = {
+  "Under Screening": "Eligible & complete?",
+  "Under Validation": "Approved to proceed?",
+  "Recommendation Recorded": "Approved?",
+  "Contract Being Drafted": "Contract issue authorisation",
+};
 
 const COMMS = [
-  {trig:"Application received", subj:"Your application has been received", body:"Your application has been successfully received."},
+  {trig:"Application received (Receipt)", subj:"Your application has been received", body:"Your application has been successfully received."},
   {trig:"Application incomplete", subj:"Additional information required", body:"Your submission requires additional information. A correction link may be provided only where the procurement rules permit corrections."},
-  {trig:"Screening unsuccessful", subj:"Update on your application", body:"Your application will not proceed to the next stage."},
-  {trig:"Approved for proposal stage", subj:"You're invited to submit a proposal", body:"You are invited to submit a detailed proposal and quotation."},
-  {trig:"Proposal received", subj:"Your proposal has been recorded", body:"Your proposal has been received and recorded."},
-  {trig:"Proposal unsuccessful", subj:"Update on your proposal", body:"Your proposal was evaluated but will not proceed to the next stage."},
-  {trig:"Preferred bidder notification", subj:"You've been approved to proceed to contracting", body:"Your submission has been approved to proceed to the contracting stage. This is not yet a final award or binding contract."},
-  {trig:"Contract drafting update", subj:"Your contract is being prepared", body:"Your contract is currently being prepared and is subject to the required internal approvals."},
-  {trig:"Contract issued", subj:"Your contract is ready to sign", body:"Your contract is available for electronic signature."},
-  {trig:"Signature reminder", subj:"Signature still outstanding", body:"Your contract remains outstanding and must be signed by the stated deadline."},
-  {trig:"Contract completed", subj:"Contract fully signed", body:"The contract has been signed by all required parties. A final copy is attached or available through the secure link."},
-  {trig:"Next engagement", subj:"Onboarding details", body:"Please find the onboarding or commencement meeting details."}
+  {trig:"Screening outcome — unsuccessful", subj:"Update on your application", body:"Your application will not proceed to the next stage."},
+  {trig:"Validation outcome — unsuccessful", subj:"Update on your application", body:"Your application could not be validated and will not proceed to the next stage."},
+  {trig:"Invitation to submit a proposal", subj:"You're invited to submit a proposal", body:"You are invited to submit a detailed proposal and quotation via a secure link."},
+  {trig:"Proposal received (Submission)", subj:"Your proposal has been recorded", body:"Your proposal has been received and recorded."},
+  {trig:"Approval outcome — unsuccessful", subj:"Update on your proposal", body:"Your proposal was evaluated but the recommendation was not approved to proceed."},
+  {trig:"Preferred bidder notification (Status)", subj:"You've been approved to proceed to contracting", body:"Your submission has been approved to proceed to the contracting stage. This is not yet a final award or binding contract."},
+  {trig:"Contract drafting update (Draft)", subj:"Your contract is being prepared", body:"Your contract is currently being prepared and is subject to the required internal approvals."},
+  {trig:"Contract issued (E-Sign)", subj:"Your contract is ready to sign", body:"Your contract is available for electronic signature."},
+  {trig:"Signature reminder / escalation", subj:"Signature still outstanding", body:"Your contract remains outstanding and must be signed by the stated deadline."},
+  {trig:"Contract completed (Signed)", subj:"Contract fully signed", body:"The contract has been signed by all required parties. A final copy is attached or available through the secure link."},
+  {trig:"Onboarding details (Onboard)", subj:"Onboarding details", body:"Please find the onboarding or commencement meeting details."}
 ];
 
 let uidCounter = 1000;
@@ -658,8 +702,11 @@ function nowStamp(){ const d=new Date(); return d.toISOString().slice(0,16).repl
 
 let audit = [];
 function logAudit(action, who, note){
-  audit.unshift({ts:nowStamp(), action, who: who||"System", note: note||""});
+  const entry = {ts:nowStamp(), action, who: who||"System", note: note||""};
+  audit.unshift(entry);
   renderAudit();
+  sb.from('rfq_audit_log').insert({action: entry.action, who: entry.who, note: entry.note})
+    .then(({error})=>{ if(error) console.error('audit log persist failed', error); });
 }
 
 let rfqs = [];
@@ -701,14 +748,33 @@ function seed(){
     timeline:[{date:today(-1),action:"Application submitted",actor:"Sarah van Wyk"}]});
   mk("RFQ-2026-014","Ubuntu IT Solutions","Bongani Dlamini","Under Validation",{receivedOffset:-6,
     timeline:[{date:today(-6),action:"Application submitted",actor:"Bongani Dlamini"},{date:today(-5),action:"Screening passed",actor:"Screening Officer"},{date:today(-4),action:"Moved to validation",actor:"Validator"}]});
-  mk("RFQ-2026-013","Kunene & Associates Auditors","Lindiwe Kunene","Under Evaluation",{receivedOffset:-25,
-    timeline:[{date:today(-25),action:"Application submitted",actor:"Lindiwe Kunene"},{date:today(-20),action:"Screening passed",actor:"Screening Officer"},{date:today(-16),action:"Validation approved",actor:"Validator"},{date:today(-10),action:"Shortlisted",actor:"Evaluation Panel"},{date:today(-8),action:"Proposal received",actor:"Lindiwe Kunene"},{date:today(-3),action:"Assigned for evaluation",actor:"Procurement Manager"}]});
+  mk("RFQ-2026-014","GreenLeaf Office Interiors","Naledi Mokoena","Invited to Submit Proposal",{receivedOffset:-8,
+    timeline:[{date:today(-8),action:"Application submitted",actor:"Naledi Mokoena"},{date:today(-7),action:"Screening passed",actor:"Screening Officer"},{date:today(-6),action:"Validation approved",actor:"Validator"},{date:today(-5),action:"Invitation to submit a proposal sent",actor:"System (automated)"}]});
+  mk("RFQ-2026-014","Metro Print & Supply","Riaan Steyn","Proposal Submitted",{receivedOffset:-14,
+    timeline:[{date:today(-14),action:"Application submitted",actor:"Riaan Steyn"},{date:today(-12),action:"Screening passed",actor:"Screening Officer"},{date:today(-11),action:"Validation approved",actor:"Validator"},{date:today(-9),action:"Invitation to submit a proposal sent",actor:"System (automated)"},{date:today(-3),action:"Proposal submitted",actor:"Riaan Steyn"}]});
+
+  mk("RFQ-2026-013","Mzansi Assurance Services","Zanele Khumalo","Assigned for Evaluation",{receivedOffset:-27,
+    timeline:[{date:today(-27),action:"Application submitted",actor:"Zanele Khumalo"},{date:today(-22),action:"Screening passed",actor:"Screening Officer"},{date:today(-18),action:"Validation approved",actor:"Validator"},{date:today(-14),action:"Invitation to submit a proposal sent",actor:"System (automated)"},{date:today(-9),action:"Proposal submitted",actor:"Zanele Khumalo"},{date:today(-5),action:"Assigned for evaluation",actor:"System (automated)"}]});
+  mk("RFQ-2026-013","Thabo Consulting & Co","Thabo Nkosi","Under Evaluation",{receivedOffset:-28,
+    timeline:[{date:today(-28),action:"Application submitted",actor:"Thabo Nkosi"},{date:today(-23),action:"Screening passed",actor:"Screening Officer"},{date:today(-19),action:"Validation approved",actor:"Validator"},{date:today(-15),action:"Invitation to submit a proposal sent",actor:"System (automated)"},{date:today(-10),action:"Proposal submitted",actor:"Thabo Nkosi"},{date:today(-6),action:"Assigned for evaluation",actor:"System (automated)"},{date:today(-4),action:"Evaluation started",actor:"Evaluation Panel"}]});
+  mk("RFQ-2026-013","Kunene & Associates Auditors","Lindiwe Kunene","Recommendation Recorded",{receivedOffset:-25,
+    timeline:[{date:today(-25),action:"Application submitted",actor:"Lindiwe Kunene"},{date:today(-20),action:"Screening passed",actor:"Screening Officer"},{date:today(-16),action:"Validation approved",actor:"Validator"},{date:today(-13),action:"Invitation to submit a proposal sent",actor:"System (automated)"},{date:today(-8),action:"Proposal submitted",actor:"Lindiwe Kunene"},{date:today(-6),action:"Assigned for evaluation",actor:"System (automated)"},{date:today(-5),action:"Evaluation started",actor:"Evaluation Panel"},{date:today(-3),action:"Recommendation recorded — awaiting delegated approval",actor:"Evaluation Panel"}]});
   mk("RFQ-2026-013","Baobab Audit Partners","Michael Reddy","Unsuccessful",{receivedOffset:-25,reason:"Proposal did not meet the required threshold",
-    timeline:[{date:today(-25),action:"Application submitted",actor:"Michael Reddy"},{date:today(-16),action:"Validation approved",actor:"Validator"},{date:today(-9),action:"Proposal received",actor:"Michael Reddy"},{date:today(-2),action:"Marked unsuccessful — proposal did not meet the required threshold",actor:"Delegated Approval Committee"}]});
+    timeline:[{date:today(-25),action:"Application submitted",actor:"Michael Reddy"},{date:today(-16),action:"Validation approved",actor:"Validator"},{date:today(-9),action:"Proposal submitted",actor:"Michael Reddy"},{date:today(-5),action:"Recommendation recorded — awaiting delegated approval",actor:"Evaluation Panel"},{date:today(-2),action:"Marked unsuccessful — proposal did not meet the required threshold",actor:"Delegated Approval Committee"}]});
+
+  mk("RFQ-2026-011","Vukani Engineering","Sipho Radebe","Preferred Bidder",{receivedOffset:-60,
+    timeline:[{date:today(-60),action:"Application submitted",actor:"Sipho Radebe"},{date:today(-48),action:"Recommendation recorded — awaiting delegated approval",actor:"Evaluation Panel"},{date:today(-42),action:"Approved — named preferred bidder",actor:"Delegated Approval Committee"}]});
   mk("RFQ-2026-011","Sisonke Construction Group","Andile Mtshali","Contract Being Drafted",{receivedOffset:-65,
-    timeline:[{date:today(-65),action:"Application submitted",actor:"Andile Mtshali"},{date:today(-52),action:"Shortlisted",actor:"Evaluation Panel"},{date:today(-40),action:"Named preferred bidder",actor:"Delegated Approval Committee"},{date:today(-30),action:"Contract drafting started",actor:"Contract Manager"}]});
+    timeline:[{date:today(-65),action:"Application submitted",actor:"Andile Mtshali"},{date:today(-52),action:"Recommendation recorded — awaiting delegated approval",actor:"Evaluation Panel"},{date:today(-40),action:"Approved — named preferred bidder",actor:"Delegated Approval Committee"},{date:today(-30),action:"Contract drafting started",actor:"Contract Manager"}]});
+  mk("RFQ-2026-011","KayaBuild Construction","Elmarie Botha","Awaiting Signature",{receivedOffset:-72,
+    timeline:[{date:today(-72),action:"Application submitted",actor:"Elmarie Botha"},{date:today(-55),action:"Approved — named preferred bidder",actor:"Delegated Approval Committee"},{date:today(-38),action:"Contract drafting started",actor:"Contract Manager"},{date:today(-20),action:"Contract issued for e-signature",actor:"System (automated)"},{date:today(-6),action:"Signature reminder sent — escalation triggered",actor:"System (automated)"}]});
+
   mk("RFQ-2026-009","Karoo Logistics & Warehousing","Petrus Botha","Onboarding",{receivedOffset:-108,
-    timeline:[{date:today(-108),action:"Application submitted",actor:"Petrus Botha"},{date:today(-90),action:"Named preferred bidder",actor:"Delegated Approval Committee"},{date:today(-70),action:"Contract signed by all parties",actor:"Contract Manager"},{date:today(-60),action:"Onboarding notice issued",actor:"System"}]});
+    timeline:[{date:today(-108),action:"Application submitted",actor:"Petrus Botha"},{date:today(-90),action:"Approved — named preferred bidder",actor:"Delegated Approval Committee"},{date:today(-70),action:"Contract signed by all parties",actor:"Contract Manager"},{date:today(-60),action:"Onboarding notice issued",actor:"System (automated)"}]});
+  mk("RFQ-2026-009","Sunrise Cold Storage","Amelia Fortuin","Contract Signed",{receivedOffset:-112,
+    timeline:[{date:today(-112),action:"Application submitted",actor:"Amelia Fortuin"},{date:today(-92),action:"Approved — named preferred bidder",actor:"Delegated Approval Committee"},{date:today(-75),action:"Contract signed by all parties",actor:"Contract Manager"}]});
+  mk("RFQ-2026-009","Highveld Relief Support","Johan Pretorius","Closed",{receivedOffset:-115,
+    timeline:[{date:today(-115),action:"Application submitted",actor:"Johan Pretorius"},{date:today(-95),action:"Approved — named preferred bidder",actor:"Delegated Approval Committee"},{date:today(-80),action:"Contract signed by all parties",actor:"Contract Manager"},{date:today(-65),action:"Onboarding notice issued",actor:"System (automated)"},{date:today(-50),action:"Procurement record closed and audit file retained",actor:"Procurement Manager"}]});
 
   audit = [];
   logAudit("RFQ-2026-014 opened for applications","Procurement Manager");
@@ -717,7 +783,6 @@ function seed(){
   logAudit("RFQ-2026-011 contract drafting task created","System");
   logAudit("RFQ-2026-009 onboarding notice issued","System");
 }
-seed();
 
 /* ============================================================
    NAVIGATION
@@ -969,16 +1034,20 @@ function removeDocRequirement(i){ newRfqDocs.splice(i,1); renderNrDocList(); }
 function createRfq(){
   const title = document.getElementById('nr-title').value.trim();
   if(!title){ toast("Missing title","Give this RFQ a title before saving."); return; }
-  const id = "RFQ-2026-0"+(rfqs.length+20);
+  uidCounter++;
+  const id = "RFQ-2026-"+uidCounter;
   const r = {id, title, category:document.getElementById('nr-category').value||"General",
     budget:Number(document.getElementById('nr-budget').value)||0, status:"Draft",
     open:document.getElementById('nr-open').value||today(), close:document.getElementById('nr-close').value||today(21),
     desc:document.getElementById('nr-desc').value||"", requiredDocs:newRfqDocs.slice()};
   rfqs.unshift(r);
+  populateRfqFilter();
   logAudit(`${id} created as Draft with ${newRfqDocs.length} required document(s)`,"Procurement Manager");
   closeAll();
   toast("RFQ saved", `${id} created as a Draft. Publishing requires sign-off.`);
   switchView('rfqs');
+  sb.from('rfq_rfqs').insert({id:r.id, title:r.title, category:r.category, status:r.status, budget:r.budget, open_date:r.open, close_date:r.close, description:r.desc, required_docs:r.requiredDocs})
+    .then(({error})=>{ if(error){ console.error('createRfq persist failed', error); toast("Not saved to database", "The RFQ shows locally but failed to save to Supabase — check the console."); } });
 }
 
 /* ============================================================
@@ -988,7 +1057,6 @@ function populateRfqFilter(){
   const sel = document.getElementById('rfq-filter');
   sel.innerHTML = `<option value="all">All RFQs</option>` + rfqs.map(r=>`<option value="${r.id}">${r.id} — ${r.title}</option>`).join('');
 }
-populateRfqFilter();
 
 function renderApplicants(){
   const filter = document.getElementById('rfq-filter').value || 'all';
@@ -1036,16 +1104,27 @@ function openApplicant(id){
       ${d.provided ? `<span class="badge sage">✓ ${d.fileName}</span>` : `<span class="badge rust">Not provided</span>`}
     </div>`).join('') : `<div style="font-size:12px; color:var(--ink-3);">No document requirements were set on this RFQ.</div>`;
 
-  const idx = APPLICANT_STATUSES.indexOf(a.status);
   const actionsEl = document.getElementById('ad-actions');
+  const nextStage = KANBAN_STAGES[KANBAN_STAGES.indexOf(a.status)+1];
+
   if(a.status==="Unsuccessful"||a.status==="Closed"){
     actionsEl.innerHTML = `<span style="font-size:12px;color:var(--ink-3);">Case closed — no further stage changes.</span>`;
+  } else if(a.status==="Awaiting Signature"){
+    actionsEl.innerHTML = `
+      <button class="btn small gold" onclick="advanceDirect('${a.id}','Contract Signed','Contract Manager (e-signature platform)')">✓ Mark fully signed</button>
+      <button class="btn small secondary" onclick="sendReminder('${a.id}')">Send reminder / escalate</button>
+      <div style="width:100%; font-size:11px; color:var(--ink-3); margin-top:2px;">Matches the flow's "Fully signed?" check — No loops back with a reminder, it doesn't regret the case.</div>`;
+  } else if(GATE_STAGES.includes(a.status)){
+    const hasRegret = !!REGRET_POOLS[a.status];
+    actionsEl.innerHTML = `
+      <button class="btn small gold" onclick="requestApproval('${a.id}')">Record decision — ${GATE_QUESTION[a.status]}</button>
+      <div style="width:100%; font-size:11px; color:var(--ink-3); margin-top:2px;">This is a human decision point in the flow${hasRegret? ' — it can end the case as unsuccessful' : ''}.</div>`;
+  } else if(nextStage){
+    actionsEl.innerHTML = `
+      <button class="btn small gold" onclick="advanceDirect('${a.id}','${nextStage}','System (automated)')">Advance to: ${nextStage}</button>
+      <div style="width:100%; font-size:11px; color:var(--ink-3); margin-top:2px;">Automated step in the flow — no sign-off required.</div>`;
   } else {
-    const nextStage = KANBAN_STAGES[KANBAN_STAGES.indexOf(a.status)+1];
-    let btns = '';
-    if(nextStage) btns += `<button class="btn small gold" onclick="requestApproval('${a.id}','advance','${nextStage}')">Advance to: ${nextStage}</button>`;
-    btns += `<button class="btn small danger" onclick="requestApproval('${a.id}','regret')">Issue regret</button>`;
-    actionsEl.innerHTML = btns;
+    actionsEl.innerHTML = `<span style="font-size:12px;color:var(--ink-3);">End of pipeline.</span>`;
   }
 
   document.getElementById('ad-timeline').innerHTML = a.timeline.slice().reverse().map(t=>`
@@ -1057,16 +1136,54 @@ function openApplicant(id){
   document.getElementById('overlay').classList.add('active');
 }
 
-let pendingAction = null;
-function requestApproval(applicantId, kind, nextStage){
-  pendingAction = {applicantId, kind, nextStage};
+/* Automated / system-step advance — no decision modal, matches the diagram's
+   blue/green (automated & process) coloured steps. */
+/* Persists an applicant's current status/reason plus one new timeline row. */
+function persistApplicantChange(a, timelineEntry){
+  sb.from('rfq_applicants').update({status:a.status, reason:a.reason||null}).eq('id', a.id)
+    .then(({error})=>{ if(error) console.error('applicant status persist failed', error); });
+  sb.from('rfq_timeline_events').insert({applicant_id:a.id, event_date:timelineEntry.date, action:timelineEntry.action, actor:timelineEntry.actor, note:timelineEntry.note||null})
+    .then(({error})=>{ if(error) console.error('timeline persist failed', error); });
+}
+
+function advanceDirect(applicantId, nextStage, actor){
   const a = applicants.find(x=>x.id===applicantId);
-  document.getElementById('ap-title').textContent = kind==='regret' ? "Confirm regret decision" : "Confirm stage advancement";
-  document.getElementById('ap-context').textContent = kind==='regret'
-    ? `${a.business} (${a.id}) will be marked unsuccessful. This requires an authorised procurement representative's sign-off before the regret email is released.`
-    : `${a.business} (${a.id}) will move from "${a.status}" to "${nextStage}". This requires an authorised approval to be recorded.`;
-  document.getElementById('ap-approve-btn').style.display = kind==='regret' ? 'none' : 'inline-block';
-  document.getElementById('ap-reject-btn').textContent = kind==='regret' ? 'Confirm regret' : 'Reject';
+  if(!a) return;
+  a.status = nextStage;
+  const entry = {date:today(), action:`Advanced to ${nextStage}`, actor: actor||"System (automated)"};
+  a.timeline.push(entry);
+  persistApplicantChange(a, entry);
+  logAudit(`${a.business} advanced to ${nextStage}`, actor||"System", "automated step");
+  toast("Advanced", `${a.business} is now ${nextStage}.`);
+  renderApplicants(); renderApprovals(); renderDashboard();
+  if(document.getElementById('applicant-drawer').classList.contains('active')) openApplicant(applicantId);
+}
+
+/* "Fully signed?" No branch — reminder/escalation, does not regret the case. */
+function sendReminder(applicantId){
+  const a = applicants.find(x=>x.id===applicantId);
+  if(!a) return;
+  const entry = {date:today(), action:"Signature reminder sent — escalation triggered", actor:"System (automated)"};
+  a.timeline.push(entry);
+  persistApplicantChange(a, entry);
+  logAudit(`Signature reminder sent to ${a.business}`, "System", "escalation triggered");
+  toast("Reminder sent", `${a.business} has been reminded — case stays at Awaiting Signature.`);
+  renderApplicants(); renderApprovals(); renderDashboard();
+  if(document.getElementById('applicant-drawer').classList.contains('active')) openApplicant(applicantId);
+}
+
+let pendingAction = null;
+function requestApproval(applicantId){
+  const a = applicants.find(x=>x.id===applicantId);
+  const nextStage = KANBAN_STAGES[KANBAN_STAGES.indexOf(a.status)+1];
+  const hasRegret = !!REGRET_POOLS[a.status];
+  pendingAction = {applicantId, nextStage, hasRegret};
+  document.getElementById('ap-title').textContent = `Record decision — ${GATE_QUESTION[a.status]}`;
+  document.getElementById('ap-context').textContent = `${a.business} (${a.id}) is at "${a.status}". Approving moves the case to "${nextStage}".${hasRegret? ' Rejecting marks it Unsuccessful and queues the regret email.' : ''} This requires an authorised sign-off.`;
+  document.getElementById('ap-approve-btn').style.display = 'inline-block';
+  document.getElementById('ap-approve-btn').textContent = `Approve → ${nextStage}`;
+  document.getElementById('ap-reject-btn').style.display = hasRegret ? 'inline-block' : 'none';
+  document.getElementById('ap-reject-btn').textContent = 'Regret / Unsuccessful';
   document.getElementById('modal-approval').classList.add('active');
   document.getElementById('overlay').classList.add('active');
 }
@@ -1075,24 +1192,25 @@ function submitApproval(isApprove){
   const name = document.getElementById('ap-name').value.trim() || "Unnamed reviewer";
   const role = document.getElementById('ap-role').value.trim() || "Authorised reviewer";
   const comment = document.getElementById('ap-comment').value.trim();
-  const coi = document.getElementById('ap-coi').value;
 
   if(pendingAction){
     const a = applicants.find(x=>x.id===pendingAction.applicantId);
-    if(pendingAction.kind==='regret' && !isApprove || pendingAction.kind==='regret'){
+    if(isApprove){
+      a.status = pendingAction.nextStage;
+      const entry = {date:today(), action:`Advanced to ${pendingAction.nextStage}`, actor:`${name} (${role})`};
+      a.timeline.push(entry);
+      persistApplicantChange(a, entry);
+      logAudit(`${a.business} advanced to ${pendingAction.nextStage}`, `${name} · ${role}`, comment);
+      toast("Decision recorded", `${a.business} is now ${pendingAction.nextStage}.`);
+    } else {
+      const pool = REGRET_POOLS[a.status] || ["Did not proceed"];
+      a.reason = pool[Math.floor(Math.random()*pool.length)];
       a.status = "Unsuccessful";
-      a.reason = REGRET_REASONS[Math.floor(Math.random()*REGRET_REASONS.length)];
-      a.timeline.push({date:today(), action:`Marked unsuccessful — ${a.reason}`, actor:`${name} (${role})`});
+      const entry = {date:today(), action:`Marked unsuccessful — ${a.reason}`, actor:`${name} (${role})`};
+      a.timeline.push(entry);
+      persistApplicantChange(a, entry);
       logAudit(`${a.business} marked unsuccessful — ${a.reason}`, `${name} · ${role}`, comment);
       toast("Regret recorded", `${a.business} moved to Unsuccessful. Regret email queued for release.`);
-    } else if(isApprove){
-      a.status = pendingAction.nextStage;
-      a.timeline.push({date:today(), action:`Advanced to ${pendingAction.nextStage}`, actor:`${name} (${role})`});
-      logAudit(`${a.business} advanced to ${pendingAction.nextStage}`, `${name} · ${role}`, comment);
-      toast("Stage advanced", `${a.business} is now ${pendingAction.nextStage}.`);
-    } else {
-      logAudit(`Advancement of ${a.business} rejected at gate`, `${name} · ${role}`, comment);
-      toast("Decision recorded", `Advancement was not approved.`);
     }
   }
   closeAll();
@@ -1105,15 +1223,13 @@ function submitApproval(isApprove){
    APPROVALS (pending gates)
    ============================================================ */
 function pendingApprovals(){
-  // Anything sitting at a gate-adjacent status is treated as "awaiting a decision"
+  // The 4 human-decision points from the flow diagram, plus signature follow-up.
   const gateStatuses = {
-    "Application Received":"Eligibility screening decision",
-    "Under Screening":"Eligibility decision",
-    "Under Validation":"Validation approval",
-    "Shortlisted":"Approve for proposal stage",
-    "Under Evaluation":"Approval decision — preferred bidder",
+    "Under Screening":"Screening decision — eligible & complete?",
+    "Under Validation":"Validation decision — approved to proceed?",
+    "Recommendation Recorded":"Approval decision — delegated authority",
     "Contract Being Drafted":"Contract issue authorisation",
-    "Awaiting Signature":"Signature follow-up",
+    "Awaiting Signature":"Signature outstanding — reminder / escalation",
   };
   return applicants.filter(a=>gateStatuses[a.status]).map(a=>({applicant:a, gate:gateStatuses[a.status]}));
 }
@@ -1230,6 +1346,11 @@ function submitApplication(){
   logAudit(`New application received from ${business} (${documents.filter(d=>d.provided).length}/${documents.length} documents attached)`, name, `for ${applyingTo}`);
   closeAll();
   toast("Application received", `Reference ${a.id} — "Your application has been successfully received."`);
+  sb.from('rfq_applicants').insert({id:a.id, rfq_id:a.rfq, business:a.business, contact_name:a.name, status:a.status, received_date:a.received, reason:a.reason, documents:a.documents})
+    .then(({error})=>{ if(error){ console.error('application persist failed', error); return; }
+      sb.from('rfq_timeline_events').insert({applicant_id:a.id, event_date:a.timeline[0].date, action:a.timeline[0].action, actor:a.timeline[0].actor})
+        .then(({error})=>{ if(error) console.error('application timeline persist failed', error); });
+    });
 }
 
 /* ============================================================
@@ -1251,14 +1372,84 @@ function toast(title, msg){
 }
 
 /* ============================================================
-   INIT
+   INIT — load from Supabase, or seed it on first run
    ============================================================ */
-renderDashboard();
-renderRfqs();
-renderApplicants();
-renderApprovals();
-renderComms();
-renderAudit();
+async function initApp(){
+  renderComms(); // static content, safe to show immediately
+
+  try{
+    const { count, error: countErr } = await sb.from('rfq_rfqs').select('id', {count:'exact', head:true});
+    if(countErr) throw countErr;
+
+    if(!count){
+      // Fresh database — build the local demo dataset, then push it up.
+      seed();
+      await pushSeedToSupabase();
+    } else {
+      await loadFromSupabase();
+    }
+  } catch(e){
+    console.error('Supabase unavailable, showing local demo data only', e);
+    seed();
+    toast("Working offline", "Couldn't reach the database — showing local demo data that won't be saved.");
+  }
+
+  bumpUidCounterPastExisting();
+  populateRfqFilter();
+  renderDashboard();
+  renderRfqs();
+  renderApplicants();
+  renderApprovals();
+  renderAudit();
+}
+
+function bumpUidCounterPastExisting(){
+  let max = uidCounter;
+  const scanText = JSON.stringify(rfqs) + JSON.stringify(applicants);
+  scanText.replace(/-(\d{3,})/g, (m,n)=>{ const v=parseInt(n,10); if(v>max) max=v; return m; });
+  uidCounter = max;
+}
+
+async function pushSeedToSupabase(){
+  const rfqRows = rfqs.map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:r.budget, open_date:r.open, close_date:r.close, description:r.desc, required_docs:r.requiredDocs||[]}));
+  const { error: e1 } = await sb.from('rfq_rfqs').insert(rfqRows);
+  if(e1) console.error('seed rfqs insert failed', e1);
+
+  const appRows = applicants.map(a=>({id:a.id, rfq_id:a.rfq, business:a.business, contact_name:a.name, status:a.status, received_date:a.received, reason:a.reason, documents:a.documents||[]}));
+  const { error: e2 } = await sb.from('rfq_applicants').insert(appRows);
+  if(e2) console.error('seed applicants insert failed', e2);
+
+  const timelineRows = [];
+  applicants.forEach(a=>{ (a.timeline||[]).forEach(t=>{ timelineRows.push({applicant_id:a.id, event_date:t.date, action:t.action, actor:t.actor, note:t.note||null}); }); });
+  if(timelineRows.length){
+    const { error: e3 } = await sb.from('rfq_timeline_events').insert(timelineRows);
+    if(e3) console.error('seed timeline insert failed', e3);
+  }
+  // audit rows were already pushed individually by logAudit() while seed() ran above.
+}
+
+async function loadFromSupabase(){
+  const [rfqRes, appRes, tlRes, auditRes] = await Promise.all([
+    sb.from('rfq_rfqs').select('*').order('created_at', {ascending:true}),
+    sb.from('rfq_applicants').select('*').order('created_at', {ascending:true}),
+    sb.from('rfq_timeline_events').select('*').order('event_date', {ascending:true}).order('id', {ascending:true}),
+    sb.from('rfq_audit_log').select('*').order('ts', {ascending:false}),
+  ]);
+  if(rfqRes.error||appRes.error||tlRes.error||auditRes.error){
+    console.error('load errors', rfqRes.error, appRes.error, tlRes.error, auditRes.error);
+  }
+
+  const timelineByApplicant = {};
+  (tlRes.data||[]).forEach(t=>{
+    (timelineByApplicant[t.applicant_id] = timelineByApplicant[t.applicant_id]||[]).push({date:t.event_date, action:t.action, actor:t.actor, note:t.note||''});
+  });
+
+  rfqs = (rfqRes.data||[]).map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:Number(r.budget), open:r.open_date, close:r.close_date, desc:r.description, requiredDocs:r.required_docs||[]}));
+  applicants = (appRes.data||[]).map(a=>({id:a.id, rfq:a.rfq_id, business:a.business, name:a.contact_name, status:a.status, received:a.received_date, reason:a.reason, documents:a.documents||[], timeline: timelineByApplicant[a.id] || []}));
+  audit = (auditRes.data||[]).map(e=>({ts: (e.ts||'').replace('T',' ').slice(0,16), action:e.action, who:e.who, note:e.note||''}));
+}
+
+initApp();
 </script>
 </body>
 </html>
