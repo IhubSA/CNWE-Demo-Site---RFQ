@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- RFQ Hub — version 1.8.1 (2026-07-31). See VERSION_INFO in the script for the full changelog. -->
+<!-- RFQ Hub — version 1.9.0 (2026-07-31). See VERSION_INFO in the script for the full changelog. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -247,7 +247,11 @@
   .upload-row input[type=file]{display:none;}
   .upload-row label.upload-btn{margin:0; display:inline-block; padding:5px 10px; border:1px solid var(--line); border-radius:var(--radius); font-size:11.5px; cursor:pointer; background:var(--white); font-weight:500; color:var(--ink-2);}
   .upload-row.done{border-color:#A9DDBC; background:var(--sage-bg);}
-  .doc-check{display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px dashed var(--line); font-size:12.5px;}
+  .doc-check{display:flex; align-items:center; justify-content:space-between; padding:6px 0 4px 0; font-size:12.5px;}
+  .doc-check-block{border-bottom:1px dashed var(--line); padding-bottom:6px; margin-bottom:2px;}
+  .doc-check-block:last-child{border-bottom:none;}
+  .doc-comment-input{width:100%; padding:5px 8px; border:1px solid var(--line); border-radius:var(--radius); font-size:11.5px; background:var(--paper); color:var(--ink); font-family:inherit; margin-bottom:4px;}
+  .doc-comment-input:focus{outline:1.5px solid var(--gold); background:var(--white);}
 
   /* ---------- audit ---------- */
   .audit-row{display:flex; gap:14px; padding:10px 0; border-bottom:1px solid var(--paper-2); font-size:12.5px;}
@@ -644,9 +648,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "1.8.1",
+  version: "1.9.0",
   date: "2026-07-31",
   changelog: [
+    "1.9.0 (2026-07-31) — Applicant documents now actually upload to Supabase Storage; reviewers can open/download submitted files and leave a comment on each one",
     "1.8.1 (2026-07-31) — Public portal RFQ cards now only show title/category/description; required documents are revealed inside the Apply modal instead of upfront",
     "1.8.0 (2026-07-31) — Added a Publish action for Draft RFQs so admins can actually get new tenders onto the public portal (previously only the seeded RFQ could ever appear there)",
     "1.7.1 (2026-07-31) — Switched to the legacy anon key format after the new sb_publishable_ key returned 403 on all requests from the deployed site",
@@ -733,6 +738,7 @@ const COMMS = [
 
 let uidCounter = 1000;
 function uid(prefix){ uidCounter++; return prefix+"-"+uidCounter; }
+function escapeAttr(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function today(offsetDays){ const d=new Date(); d.setDate(d.getDate()+(offsetDays||0)); return d.toISOString().slice(0,10); }
 function nowStamp(){ const d=new Date(); return d.toISOString().slice(0,16).replace('T',' '); }
 
@@ -770,7 +776,8 @@ function seed(){
     const documents = (rfq.requiredDocs||[]).map(d=>({
       docId:d.id, name:d.name, mandatory:d.mandatory,
       provided: !missing.includes(d.name),
-      fileName: missing.includes(d.name) ? null : d.name.split(' ').slice(0,2).join('_')+'.pdf'
+      fileName: missing.includes(d.name) ? null : d.name.split(' ').slice(0,2).join('_')+'.pdf',
+      fileUrl: null, reviewerComment: ''
     }));
     const a = {id:uid("APP"), rfq:rfqId, business, name, status,
       received:today(extra.receivedOffset||0), reason:extra.reason||null, documents,
@@ -1136,9 +1143,16 @@ function openApplicant(id){
 
   const docs = a.documents || [];
   document.getElementById('ad-docs').innerHTML = docs.length ? docs.map(d=>`
-    <div class="doc-check">
-      <span>${d.name}${d.mandatory? '<span class="req" style="color:var(--rust); font-size:10.5px; margin-left:5px;">Required</span>' : ''}</span>
-      ${d.provided ? `<span class="badge sage">✓ ${d.fileName}</span>` : `<span class="badge rust">Not provided</span>`}
+    <div class="doc-check-block">
+      <div class="doc-check">
+        <span>${d.name}${d.mandatory? '<span class="req" style="color:var(--rust); font-size:10.5px; margin-left:5px;">Required</span>' : ''}</span>
+        ${d.provided
+          ? (d.fileUrl
+              ? `<a href="${d.fileUrl}" target="_blank" rel="noopener" class="badge sage" style="text-decoration:none;">↗ Open ${d.fileName}</a>`
+              : `<span class="badge sage">✓ ${d.fileName}</span>`)
+          : `<span class="badge rust">Not provided</span>`}
+      </div>
+      ${d.provided ? `<input type="text" class="doc-comment-input" placeholder="Add a review comment…" value="${escapeAttr(d.reviewerComment)}" onchange="saveDocComment('${a.id}','${d.docId}', this.value)">` : ''}
     </div>`).join('') : `<div style="font-size:12px; color:var(--ink-3);">No document requirements were set on this RFQ.</div>`;
 
   const actionsEl = document.getElementById('ad-actions');
@@ -1176,6 +1190,20 @@ function openApplicant(id){
 /* Automated / system-step advance — no decision modal, matches the diagram's
    blue/green (automated & process) coloured steps. */
 /* Persists an applicant's current status/reason plus one new timeline row. */
+/* Reviewer comment on a single submitted document. */
+function saveDocComment(applicantId, docId, comment){
+  const a = applicants.find(x=>x.id===applicantId);
+  if(!a) return;
+  const doc = (a.documents||[]).find(d=>d.docId===docId);
+  if(!doc) return;
+  doc.reviewerComment = comment;
+  sb.from('rfq_applicants').update({documents:a.documents}).eq('id', a.id)
+    .then(({error})=>{
+      if(error){ console.error('doc comment persist failed', error); toast("Not saved to database", "Comment saved locally but failed to save — check the console."); }
+      else { toast("Comment saved", `Note added to ${doc.name}.`); }
+    });
+}
+
 function persistApplicantChange(a, timelineEntry){
   sb.from('rfq_applicants').update({status:a.status, reason:a.reason||null}).eq('id', a.id)
     .then(({error})=>{ if(error){ console.error('applicant status persist failed', error); toast("Not saved to database", `${a.business}'s status changed locally but failed to save — check the console.`); } });
@@ -1365,7 +1393,7 @@ let applyDocState = [];
 function openApply(rfqId){
   applyingTo = rfqId;
   const rfq = rfqs.find(r=>r.id===rfqId);
-  applyDocState = (rfq.requiredDocs||[]).map(d=>({docId:d.id, name:d.name, mandatory:d.mandatory, fileName:null}));
+  applyDocState = (rfq.requiredDocs||[]).map(d=>({docId:d.id, name:d.name, mandatory:d.mandatory, fileName:null, fileUrl:null, uploading:false}));
   document.getElementById('apply-context').textContent = `Applying to ${rfqId} — ${rfqTitle(rfqId)}`;
   document.getElementById('apply-business').value='';
   document.getElementById('apply-name').value='';
@@ -1377,29 +1405,51 @@ function renderApplyDocList(){
   const el = document.getElementById('apply-doclist');
   if(!applyDocState.length){ el.innerHTML = `<div style="font-size:12px; color:var(--ink-3);">No documents were specified for this RFQ.</div>`; return; }
   el.innerHTML = applyDocState.map((d,i)=>`
-    <div class="upload-row ${d.fileName? 'done':''}">
+    <div class="upload-row ${d.fileUrl? 'done':''}">
       <div class="dname">${d.name}${d.mandatory? '<span class="req">Required</span>' : ''}</div>
-      ${d.fileName
-        ? `<span class="fname">✓ ${d.fileName}</span>`
-        : `<label class="upload-btn">Choose file<input type="file" onchange="handleDocFile(${i}, this)"></label>`}
+      ${d.uploading
+        ? `<span class="fname">Uploading…</span>`
+        : d.fileUrl
+          ? `<span class="fname">✓ ${d.fileName}</span>`
+          : d.fileName
+            ? `<span class="fname" style="color:var(--rust);">Upload failed — retry</span><label class="upload-btn">Choose file<input type="file" onchange="handleDocFile(${i}, this)"></label>`
+            : `<label class="upload-btn">Choose file<input type="file" onchange="handleDocFile(${i}, this)"></label>`}
     </div>`).join('');
 }
-function handleDocFile(i, input){
+async function handleDocFile(i, input){
   const file = input.files && input.files[0];
   if(!file) return;
   applyDocState[i].fileName = file.name;
+  applyDocState[i].fileUrl = null;
+  applyDocState[i].uploading = true;
+  renderApplyDocList();
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const path = `${applyingTo}/${Date.now()}_${safeName}`;
+  try{
+    const { error: uploadErr } = await sb.storage.from('applicant-documents').upload(path, file, {upsert:false});
+    if(uploadErr) throw uploadErr;
+    const { data: urlData } = sb.storage.from('applicant-documents').getPublicUrl(path);
+    applyDocState[i].fileUrl = urlData.publicUrl;
+    applyDocState[i].filePath = path;
+  } catch(e){
+    console.error('document upload failed', e);
+    toast("Upload failed", `Could not upload ${file.name} — please try again.`);
+  }
+  applyDocState[i].uploading = false;
   renderApplyDocList();
 }
 function submitApplication(){
   const business = document.getElementById('apply-business').value.trim();
   const name = document.getElementById('apply-name').value.trim();
   if(!business || !name){ toast("Missing details","Business name and contact name are both required."); return; }
-  const missingMandatory = applyDocState.filter(d=>d.mandatory && !d.fileName);
+  if(applyDocState.some(d=>d.uploading)){ toast("Still uploading","Please wait for document uploads to finish before submitting."); return; }
+  const missingMandatory = applyDocState.filter(d=>d.mandatory && !d.fileUrl);
   if(missingMandatory.length){
     toast("Documents outstanding", `Please upload: ${missingMandatory.map(d=>d.name).join(', ')}.`);
     return;
   }
-  const documents = applyDocState.map(d=>({docId:d.docId, name:d.name, mandatory:d.mandatory, provided:!!d.fileName, fileName:d.fileName}));
+  const documents = applyDocState.map(d=>({docId:d.docId, name:d.name, mandatory:d.mandatory, provided:!!d.fileUrl, fileName:d.fileName, fileUrl:d.fileUrl||null, reviewerComment:''}));
   const a = {id:uid("APP"), rfq:applyingTo, business, name, status:"Application Received", received:today(), reason:null, documents,
     timeline:[{date:today(), action:"Application submitted", actor:name}]};
   applicants.push(a);
