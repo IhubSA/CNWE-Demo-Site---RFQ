@@ -267,6 +267,84 @@
 
   .empty-state{text-align:center; padding:40px 20px; color:var(--ink-3); font-size:13px;}
 
+  /* ============================================================
+     KPI DASHBOARD (dark theme, scoped — dashboard tab only)
+     ============================================================ */
+  .kpi-dash{
+    --kd-bg:#0E1826; --kd-card:#16233A; --kd-card-2:#1B2A45; --kd-border:rgba(255,255,255,0.08);
+    --kd-text:#EAEFF6; --kd-dim:#8CA0BC; --kd-grid:rgba(255,255,255,0.07);
+    --kd-blue:#3B82F6; --kd-green:#22C55E; --kd-purple:#A855F7; --kd-orange:#F59E0B;
+    --kd-teal:#14B8A6; --kd-pink:#EC4899; --kd-red:#F87171; --kd-yellow:#FACC15;
+    background:var(--kd-bg); color:var(--kd-text);
+    margin:-30px -40px -60px -40px; padding:26px 40px 50px 40px;
+    font-family:'IBM Plex Sans', sans-serif;
+  }
+  .kpi-dash .kd-topbar{display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; flex-wrap:wrap; gap:14px;}
+  .kpi-dash .kd-eyebrow{font-size:11px; text-transform:uppercase; letter-spacing:0.14em; color:var(--kd-blue); font-weight:600; margin-bottom:5px;}
+  .kpi-dash h2.kd-title{font-family:'Source Serif 4',serif; font-size:24px; font-weight:600; margin:0 0 4px 0; color:#fff;}
+  .kpi-dash .kd-desc{font-size:12.5px; color:var(--kd-dim);}
+  .kpi-dash .kd-chip{background:var(--kd-card); border:1px solid var(--kd-border); border-radius:20px; padding:7px 14px; font-size:12px; color:var(--kd-dim); display:inline-flex; align-items:center; gap:6px;}
+  .kpi-dash .btn.gold{background:var(--kd-blue); border-color:var(--kd-blue);}
+  .kpi-dash .btn.gold:hover{background:#2f6fe0;}
+
+  .kd-stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:16px;}
+  .kd-stat{background:var(--kd-card); border:1px solid var(--kd-border); border-radius:10px; padding:16px 18px; position:relative; overflow:hidden;}
+  .kd-stat .kd-icon{width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; margin-bottom:12px;}
+  .kd-stat .kd-icon svg{width:19px; height:19px;}
+  .kd-stat .kd-n{font-family:'Source Serif 4',serif; font-size:25px; font-weight:600; color:#fff; line-height:1.1;}
+  .kd-stat .kd-l{font-size:11.5px; color:var(--kd-dim); margin:2px 0 8px 0; text-transform:uppercase; letter-spacing:0.05em;}
+  .kd-stat .kd-delta{font-size:11.5px; display:flex; align-items:center; gap:4px;}
+  .kd-stat .kd-delta.up{color:var(--kd-green);}
+  .kd-stat .kd-delta.down{color:var(--kd-red);}
+  .kd-stat .kd-delta .sub{color:var(--kd-dim); font-weight:400;}
+
+  .kd-grid{display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:14px; margin-bottom:14px;}
+  .kd-grid2{display:grid; grid-template-columns:repeat(4,1fr); gap:14px;}
+  .kd-panel{background:var(--kd-card); border:1px solid var(--kd-border); border-radius:10px; padding:16px 18px;}
+  .kd-panel .kd-panel-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;}
+  .kd-panel h4{margin:0; font-size:13px; font-weight:600; color:#fff;}
+  .kd-panel .kd-tag{font-size:10.5px; background:var(--kd-card-2); color:var(--kd-dim); padding:3px 8px; border-radius:10px;}
+
+  .kd-bar-chart{display:flex; align-items:flex-end; gap:10px; height:150px; padding-top:10px;}
+  .kd-bar-col{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%;}
+  .kd-bar-col .kd-bar{width:100%; max-width:30px; border-radius:5px 5px 0 0; background:linear-gradient(180deg, var(--kd-blue), #2451A8);}
+  .kd-bar-col .kd-bar-label{font-size:10px; color:var(--kd-dim); margin-top:7px;}
+  .kd-bar-col .kd-bar-val{font-size:9.5px; color:var(--kd-dim); margin-bottom:4px;}
+
+  .kd-donut-wrap{display:flex; align-items:center; gap:16px;}
+  .kd-donut-legend{display:flex; flex-direction:column; gap:8px; font-size:11.5px;}
+  .kd-donut-legend .row{display:flex; align-items:center; gap:7px; color:var(--kd-dim);}
+  .kd-donut-legend .dot{width:8px; height:8px; border-radius:50%; flex-shrink:0;}
+  .kd-donut-legend .val{color:#fff; font-weight:500; margin-left:auto; padding-left:10px;}
+
+  .kd-rank-row{display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--kd-border); font-size:12px;}
+  .kd-rank-row:last-child{border-bottom:none;}
+  .kd-rank-row .kd-rank-dot{width:7px; height:7px; border-radius:50%; flex-shrink:0;}
+  .kd-rank-row .kd-rank-name{flex:1; color:var(--kd-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .kd-rank-row .kd-rank-score{color:#fff; font-weight:600; font-family:'IBM Plex Mono',monospace; font-size:11.5px;}
+  .kd-rank-row .kd-rank-trend{font-size:11px; width:34px; text-align:right;}
+  .kd-rank-row .kd-rank-trend.up{color:var(--kd-green);}
+  .kd-rank-row .kd-rank-trend.flat{color:var(--kd-dim);}
+
+  .kd-gauge-wrap{display:flex; flex-direction:column; align-items:center; justify-content:center;}
+  .kd-gauge-n{font-family:'Source Serif 4',serif; font-size:22px; font-weight:600; color:#fff;}
+  .kd-gauge-l{font-size:10.5px; color:var(--kd-dim); margin-top:2px;}
+  .kd-gauge-delta{margin-top:8px; font-size:11px; color:var(--kd-green);}
+
+  .kd-line-chart{width:100%; height:120px;}
+  .kd-line-val{font-family:'Source Serif 4',serif; font-size:19px; color:#fff; font-weight:600;}
+
+  .kd-minibar{display:flex; align-items:flex-end; gap:8px; height:90px;}
+  .kd-minibar .col{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%;}
+  .kd-minibar .b{width:100%; max-width:22px; border-radius:4px 4px 0 0;}
+  .kd-minibar .lab{font-size:9px; color:var(--kd-dim); margin-top:5px; text-align:center;}
+
+  @media (max-width: 1000px){
+    .kd-grid{grid-template-columns:1fr; }
+    .kd-grid2{grid-template-columns:repeat(2,1fr);}
+    .kd-stats{grid-template-columns:repeat(2,1fr);}
+  }
+
   @media (max-width: 900px){
     .stat-row{grid-template-columns:repeat(2,1fr);}
     .sidebar{width:64px;}
@@ -304,27 +382,54 @@
 
     <!-- DASHBOARD -->
     <section class="view active" id="view-dashboard">
-      <div class="page-head">
-        <div>
-          <div class="eyebrow">Overview</div>
-          <h1>Procurement dashboard</h1>
-          <div class="desc">Every open case, pending decision, and outstanding contract in one register.</div>
+      <div class="kpi-dash">
+        <div class="kd-topbar">
+          <div>
+            <div class="kd-eyebrow">Procurement KPI Dashboard</div>
+            <h2 class="kd-title">Overview</h2>
+            <div class="kd-desc">Every open case, pending decision, and outstanding contract — live from the register.</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="kd-chip">📅 All open cases</span>
+            <button class="btn gold" onclick="openNewRfq()">+ New RFQ</button>
+          </div>
         </div>
-        <button class="btn gold" onclick="openNewRfq()">+ New RFQ</button>
-      </div>
 
-      <div class="stat-row" id="stat-row"></div>
+        <div class="kd-stats" id="kd-stats"></div>
 
-      <div class="panel">
-        <div class="panel-head"><h3>Open RFQs</h3><a style="font-size:12px;color:var(--ink-3);cursor:pointer;" onclick="switchView('rfqs')">View all →</a></div>
-        <div class="panel-body" style="padding:0;">
-          <table id="dash-rfq-table"></table>
+        <div class="kd-grid">
+          <div class="kd-panel">
+            <div class="kd-panel-head"><h4>RFQs Published Over Time</h4><span class="kd-tag">6 months</span></div>
+            <div id="kd-bars"></div>
+          </div>
+          <div class="kd-panel">
+            <div class="kd-panel-head"><h4>Budget by Category</h4></div>
+            <div id="kd-donut1"></div>
+          </div>
+          <div class="kd-panel">
+            <div class="kd-panel-head"><h4>Top Applicants by Progress</h4></div>
+            <div id="kd-rank"></div>
+          </div>
         </div>
-      </div>
 
-      <div class="panel">
-        <div class="panel-head"><h3>Pending decision gates</h3><a style="font-size:12px;color:var(--ink-3);cursor:pointer;" onclick="switchView('approvals')">View all →</a></div>
-        <div class="panel-body" id="dash-approvals"></div>
+        <div class="kd-grid2">
+          <div class="kd-panel">
+            <div class="kd-panel-head"><h4>Applicant Status Mix</h4></div>
+            <div id="kd-donut2"></div>
+          </div>
+          <div class="kd-panel">
+            <div class="kd-panel-head"><h4>Pipeline Health</h4></div>
+            <div id="kd-gauge"></div>
+          </div>
+          <div class="kd-panel">
+            <div class="kd-panel-head"><h4>Contract Value Trend</h4></div>
+            <div id="kd-line"></div>
+          </div>
+          <div class="kd-panel">
+            <div class="kd-panel-head"><h4>Pending Gates by Type</h4></div>
+            <div id="kd-minibar"></div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -527,7 +632,7 @@
 const RFQ_STATUSES = ["Draft","Pending Internal Approval","Published","Open for Applications","Applications Closed","Screening in Progress","Validation in Progress","Proposal Stage Open","Evaluation in Progress","Approval Pending","Contracting","Awarded","Cancelled","Closed"];
 
 const APPLICANT_STATUSES = ["Application Received","Under Screening","Under Validation","Shortlisted","Proposal Invited","Proposal Received","Under Evaluation","Preferred Bidder","Contract Being Drafted","Awaiting Signature","Contract Signed","Onboarding","Closed"];
-const KANBAN_STAGES = ["Application Received","Under Screening","Under Validation","Shortlisted","Under Evaluation","Preferred Bidder","Contract Being Drafted","Awaiting Signature","Onboarding"];
+const KANBAN_STAGES = ["Application Received","Under Screening","Under Validation","Shortlisted","Under Evaluation","Preferred Bidder","Contract Being Drafted","Awaiting Signature","Contract Signed","Onboarding","Closed"];
 
 const REGRET_REASONS = ["Mandatory information not supplied","Eligibility criteria not met","Validation unsuccessful","Not shortlisted","Proposal did not meet the required threshold","Another submission achieved a higher evaluation result","RFQ cancelled or withdrawn"];
 
@@ -662,33 +767,154 @@ function rfqTitle(id){ const r=rfqs.find(x=>x.id===id); return r? r.title : id; 
 function zar(n){ return "R "+Number(n).toLocaleString('en-ZA'); }
 
 /* ============================================================
-   DASHBOARD
+   DASHBOARD — dark KPI theme, chart helpers
    ============================================================ */
-function renderDashboard(){
-  const open = rfqs.filter(r=>!["Draft","Cancelled","Closed","Awarded"].includes(r.status)).length;
-  const activeApplicants = applicants.filter(a=>!["Unsuccessful","Closed","Ineligible"].includes(a.status)).length;
-  const pendingGates = pendingApprovals().length;
-  const awarded = rfqs.filter(r=>r.status==="Awarded"||r.status==="Contracting").length;
+const KD_PALETTE = ['#3B82F6','#22C55E','#A855F7','#F59E0B','#14B8A6','#EC4899','#FACC15'];
+const KD_ICONS = {
+  dollar:`<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>`,
+  users:`<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>`,
+  target:`<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>`,
+  briefcase:`<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>`
+};
 
-  document.getElementById('stat-row').innerHTML = `
-    <div class="stat-card"><div class="n">${open}</div><div class="l">Active RFQs</div></div>
-    <div class="stat-card"><div class="n">${activeApplicants}</div><div class="l">Applicants in pipeline</div></div>
-    <div class="stat-card"><div class="n">${pendingGates}</div><div class="l">Decision gates pending</div></div>
-    <div class="stat-card"><div class="n">${awarded}</div><div class="l">Contracting / awarded</div></div>
-  `;
-
-  const openRfqs = rfqs.filter(r=>!["Cancelled","Closed"].includes(r.status)).slice(0,6);
-  document.getElementById('dash-rfq-table').innerHTML = `
-    <tr><th>Reference</th><th>Title</th><th>Status</th><th>Closes</th></tr>
-    ${openRfqs.map(r=>`<tr class="rowlink" onclick="switchView('rfqs')">
-      <td class="ref mono">${r.id}</td><td>${r.title}</td>
-      <td><span class="badge ${rfqBadgeClass(r.status)}">${r.status}</span></td>
-      <td class="mono">${r.close}</td></tr>`).join('')}
-  `;
-
-  const pend = pendingApprovals().slice(0,4);
-  document.getElementById('dash-approvals').innerHTML = pend.length ? pend.map(p=>approvalCardHtml(p)).join('') : `<div class="empty-state">No decision gates awaiting action.</div>`;
+function kdMonthKeys(n){
+  const out=[]; const d=new Date();
+  d.setDate(1);
+  for(let i=n-1;i>=0;i--){
+    const m=new Date(d.getFullYear(), d.getMonth()-i, 1);
+    out.push({key:m.getFullYear()+'-'+m.getMonth(), label:m.toLocaleString('en-US',{month:'short'})});
+  }
+  return out;
 }
+function kdMonthKeyOf(dateStr){ const d=new Date(dateStr); return d.getFullYear()+'-'+d.getMonth(); }
+
+function kdDonut(segments, size, thickness, centerBig, centerSmall){
+  const total = segments.reduce((s,x)=>s+x.value,0)||1;
+  const r=(size-thickness)/2, c=size/2, circ=2*Math.PI*r;
+  let offset=0;
+  const circles = segments.map(seg=>{
+    const frac=seg.value/total, dash=frac*circ, gap=circ-dash;
+    const el=`<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${seg.color}" stroke-width="${thickness}" stroke-dasharray="${dash.toFixed(1)} ${gap.toFixed(1)}" stroke-dashoffset="${(-offset).toFixed(1)}" transform="rotate(-90 ${c} ${c})"></circle>`;
+    offset+=dash; return el;
+  }).join('');
+  const center = centerBig ? `<div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+      <div class="kd-gauge-n" style="font-size:${size>110?'20px':'15px'};">${centerBig}</div>
+      ${centerSmall?`<div class="kd-gauge-l">${centerSmall}</div>`:''}
+    </div>` : '';
+  return `<div style="position:relative; width:${size}px; height:${size}px; flex-shrink:0;"><svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">${circles}</svg>${center}</div>`;
+}
+function kdLine(values, w, h, color){
+  const max=Math.max(...values,1), min=Math.min(...values,0), range=(max-min)||1;
+  const stepX = values.length>1 ? w/(values.length-1) : w;
+  const pts = values.map((v,i)=>{ const x=i*stepX; const y=h-((v-min)/range)*(h-14)-7; return [x,y]; });
+  const ptStr = pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const dots = pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${color}"></circle>`).join('');
+  const areaPts = `0,${h} ${ptStr} ${w},${h}`;
+  const gid='lg'+Math.floor(Math.random()*100000);
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity="0.32"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+    <polygon points="${areaPts}" fill="url(#${gid})"></polygon>
+    <polyline points="${ptStr}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></polyline>
+    ${dots}
+  </svg>`;
+}
+
+function renderDashboard(){
+  const activeRfqs = rfqs.filter(r=>!["Draft","Cancelled","Closed"].includes(r.status));
+  const draftRfqs = rfqs.filter(r=>r.status==="Draft");
+  const totalValue = activeRfqs.reduce((s,r)=>s+r.budget,0);
+  const activeApplicants = applicants.filter(a=>!["Unsuccessful","Closed"].includes(a.status));
+  const unsuccessful = applicants.filter(a=>a.status==="Unsuccessful");
+  const newThisWeek = applicants.filter(a=> new Date(a.received) >= new Date(today(-7))).length;
+  const pipelineHealth = applicants.length ? Math.round((applicants.length-unsuccessful.length)/applicants.length*100) : 0;
+
+  /* ---- stat cards ---- */
+  document.getElementById('kd-stats').innerHTML = `
+    <div class="kd-stat"><div class="kd-icon" style="background:#3B82F6;">${KD_ICONS.dollar}</div>
+      <div class="kd-n">${zar(totalValue)}</div><div class="kd-l">Total procurement value</div>
+      <div class="kd-delta up">● <span class="sub">${activeRfqs.length} active RFQs</span></div></div>
+    <div class="kd-stat"><div class="kd-icon" style="background:#22C55E;">${KD_ICONS.users}</div>
+      <div class="kd-n">${activeApplicants.length}</div><div class="kd-l">Applicants in pipeline</div>
+      <div class="kd-delta up">● <span class="sub">${newThisWeek} received this week</span></div></div>
+    <div class="kd-stat"><div class="kd-icon" style="background:#A855F7;">${KD_ICONS.target}</div>
+      <div class="kd-n">${pipelineHealth}%</div><div class="kd-l">Pipeline health</div>
+      <div class="kd-delta down">● <span class="sub">${unsuccessful.length} unsuccessful</span></div></div>
+    <div class="kd-stat"><div class="kd-icon" style="background:#F59E0B;">${KD_ICONS.briefcase}</div>
+      <div class="kd-n">${activeRfqs.length}</div><div class="kd-l">Active RFQs</div>
+      <div class="kd-delta up">● <span class="sub">${draftRfqs.length} in draft</span></div></div>
+  `;
+
+  /* ---- bar chart: RFQs published over time ---- */
+  const months = kdMonthKeys(6);
+  const counts = months.map(m=> rfqs.filter(r=>kdMonthKeyOf(r.open)===m.key).length);
+  const maxCount = Math.max(...counts,1);
+  document.getElementById('kd-bars').innerHTML = `<div class="kd-bar-chart">${months.map((m,i)=>`
+    <div class="kd-bar-col">
+      <div class="kd-bar-val">${counts[i]||''}</div>
+      <div class="kd-bar" style="height:${counts[i]? Math.max(8,(counts[i]/maxCount*110)) : 3}px;"></div>
+      <div class="kd-bar-label">${m.label}</div>
+    </div>`).join('')}</div>`;
+
+  /* ---- donut: budget by category ---- */
+  const catMap = {};
+  activeRfqs.forEach(r=>{ catMap[r.category] = (catMap[r.category]||0) + r.budget; });
+  const catSegs = Object.keys(catMap).map((k,i)=>({label:k, value:catMap[k], color:KD_PALETTE[i%KD_PALETTE.length]}));
+  document.getElementById('kd-donut1').innerHTML = `<div class="kd-donut-wrap">
+    ${kdDonut(catSegs.length?catSegs:[{value:1,color:'#2A3B57'}], 116, 15, zar(totalValue).replace('R ','R'), 'Total')}
+    <div class="kd-donut-legend">${catSegs.map(s=>`<div class="row"><span class="dot" style="background:${s.color};"></span>${s.label}<span class="val">${zar(s.value)}</span></div>`).join('') || '<div class="row">No active RFQs yet</div>'}</div>
+  </div>`;
+
+  /* ---- ranked list: top applicants by progress ---- */
+  const ranked = applicants.filter(a=>a.status!=="Unsuccessful").map(a=>{
+    const idx = KANBAN_STAGES.indexOf(a.status);
+    const pct = idx>=0 ? Math.round(((idx+1)/KANBAN_STAGES.length)*100) : (a.status==="Closed"?100:0);
+    return {a, pct};
+  }).sort((x,y)=>y.pct-x.pct).slice(0,5);
+  document.getElementById('kd-rank').innerHTML = ranked.map((r,i)=>`
+    <div class="kd-rank-row">
+      <span class="kd-rank-dot" style="background:${KD_PALETTE[i%KD_PALETTE.length]};"></span>
+      <span class="kd-rank-name">${r.a.business}</span>
+      <span class="kd-rank-score">${r.pct}%</span>
+      <span class="kd-rank-trend ${r.a.timeline.length>1?'up':'flat'}">${r.a.timeline.length>1?'▲':'—'}</span>
+    </div>`).join('') || `<div style="color:var(--kd-dim); font-size:12px;">No applicants yet.</div>`;
+
+  /* ---- donut: applicant status mix ---- */
+  const closedGroup = applicants.filter(a=>["Contract Signed","Onboarding","Closed"].includes(a.status)).length;
+  const mix = [
+    {label:'Active', value: applicants.length-unsuccessful.length-closedGroup, color:'#3B82F6'},
+    {label:'Unsuccessful', value: unsuccessful.length, color:'#F87171'},
+    {label:'Closed / Onboarded', value: closedGroup, color:'#22C55E'},
+  ].filter(s=>s.value>0);
+  document.getElementById('kd-donut2').innerHTML = `<div class="kd-donut-wrap">
+    ${kdDonut(mix.length?mix:[{value:1,color:'#2A3B57'}], 108, 15, String(applicants.length), 'Total')}
+    <div class="kd-donut-legend">${mix.map(s=>`<div class="row"><span class="dot" style="background:${s.color};"></span>${s.label}<span class="val">${s.value}</span></div>`).join('') || '<div class="row">No applicants yet</div>'}</div>
+  </div>`;
+
+  /* ---- gauge: pipeline health ---- */
+  document.getElementById('kd-gauge').innerHTML = `<div class="kd-gauge-wrap">
+    ${kdDonut([{value:pipelineHealth,color:'#A855F7'},{value:100-pipelineHealth,color:'#26314A'}], 118, 14, pipelineHealth+'%', 'Active vs. unsuccessful')}
+    <div class="kd-gauge-delta">${applicants.length-unsuccessful.length} of ${applicants.length} applicants still active</div>
+  </div>`;
+
+  /* ---- line chart: contract value trend (cumulative) ---- */
+  let running=0;
+  const cumValues = months.map(m=>{ running += rfqs.filter(r=>kdMonthKeyOf(r.open)===m.key).reduce((s,r)=>s+r.budget,0); return running; });
+  document.getElementById('kd-line').innerHTML = `<div class="kd-line-val">${zar(running)}</div>
+    <div class="kd-line-chart">${kdLine(cumValues, 260, 100, '#14B8A6')}</div>
+    <div style="display:flex; justify-content:space-between; font-size:9.5px; color:var(--kd-dim); margin-top:2px;">${months.map(m=>`<span>${m.label}</span>`).join('')}</div>`;
+
+  /* ---- mini bar: pending gates by type ---- */
+  const gateGroups = {};
+  pendingApprovals().forEach(p=>{ gateGroups[p.gate] = (gateGroups[p.gate]||0)+1; });
+  const gateEntries = Object.entries(gateGroups);
+  const maxGate = Math.max(...gateEntries.map(e=>e[1]),1);
+  document.getElementById('kd-minibar').innerHTML = gateEntries.length ? `<div class="kd-minibar">${gateEntries.map(([label,val],i)=>`
+    <div class="col"><div class="b" style="height:${Math.max(10,val/maxGate*70)}px; background:${KD_PALETTE[i%KD_PALETTE.length]};"></div>
+    <div class="lab">${label.split(' ').slice(0,2).join(' ')}</div></div>`).join('')}</div>`
+    : `<div style="color:var(--kd-dim); font-size:12px;">No gates pending.</div>`;
+}
+
+
 
 /* ============================================================
    RFQs
@@ -770,9 +996,10 @@ function renderApplicants(){
   const kanban = document.getElementById('kanban');
   const cols = KANBAN_STAGES.map(stage=>{
     const items = list.filter(a=>a.status===stage);
+    const doneStage = ["Contract Signed","Onboarding","Closed"].includes(stage);
     return `<div class="kcol">
       <div class="kcol-head"><span>${stage}</span><span>${items.length}</span></div>
-      ${items.map(a=>`<div class="kcard" onclick="openApplicant('${a.id}')">
+      ${items.map(a=>`<div class="kcard ${doneStage?'awarded':''}" onclick="openApplicant('${a.id}')">
         <div class="biz">${a.business}</div>
         <div class="ref mono">${a.id} · ${rfqTitle(a.rfq).split(' ').slice(0,3).join(' ')}…</div>
       </div>`).join('')}
