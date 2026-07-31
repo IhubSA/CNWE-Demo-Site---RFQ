@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- RFQ Hub — version 1.7.1 (2026-07-31). See VERSION_INFO in the script for the full changelog. -->
+<!-- RFQ Hub — version 1.8.0 (2026-07-31). See VERSION_INFO in the script for the full changelog. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -644,9 +644,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "1.7.1",
+  version: "1.8.0",
   date: "2026-07-31",
   changelog: [
+    "1.8.0 (2026-07-31) — Added a Publish action for Draft RFQs so admins can actually get new tenders onto the public portal (previously only the seeded RFQ could ever appear there)",
     "1.7.1 (2026-07-31) — Switched to the legacy anon key format after the new sb_publishable_ key returned 403 on all requests from the deployed site",
     "1.7.0 (2026-07-31) — Version badge added; fixed stale 'not connected' message; write failures now show a toast instead of failing silently",
     "1.6.0 (2026-07-31) — Connected to a live Supabase backend (RFQs, applicants, timeline, audit log all persist)",
@@ -1020,11 +1021,12 @@ function renderDashboard(){
    ============================================================ */
 function renderRfqs(){
   document.getElementById('rfq-table').innerHTML = `
-    <tr><th>Reference</th><th>Title</th><th>Category</th><th>Budget</th><th>Status</th><th>Opens</th><th>Closes</th></tr>
+    <tr><th>Reference</th><th>Title</th><th>Category</th><th>Budget</th><th>Status</th><th>Opens</th><th>Closes</th><th></th></tr>
     ${rfqs.map(r=>`<tr class="rowlink" onclick="focusRfqInPipeline('${r.id}')">
       <td class="ref mono">${r.id}</td><td>${r.title}</td><td>${r.category}</td><td class="mono">${zar(r.budget)}</td>
       <td><span class="badge ${rfqBadgeClass(r.status)}">${r.status}</span></td>
-      <td class="mono">${r.open}</td><td class="mono">${r.close}</td></tr>`).join('')}
+      <td class="mono">${r.open}</td><td class="mono">${r.close}</td>
+      <td>${r.status==="Draft" ? `<button class="btn small gold" onclick="event.stopPropagation(); requestPublishRfq('${r.id}')">Publish</button>` : ''}</td></tr>`).join('')}
   `;
 }
 function focusRfqInPipeline(id){
@@ -1211,7 +1213,7 @@ function requestApproval(applicantId){
   const a = applicants.find(x=>x.id===applicantId);
   const nextStage = KANBAN_STAGES[KANBAN_STAGES.indexOf(a.status)+1];
   const hasRegret = !!REGRET_POOLS[a.status];
-  pendingAction = {applicantId, nextStage, hasRegret};
+  pendingAction = {type:'applicant', applicantId, nextStage, hasRegret};
   document.getElementById('ap-title').textContent = `Record decision — ${GATE_QUESTION[a.status]}`;
   document.getElementById('ap-context').textContent = `${a.business} (${a.id}) is at "${a.status}". Approving moves the case to "${nextStage}".${hasRegret? ' Rejecting marks it Unsuccessful and queues the regret email.' : ''} This requires an authorised sign-off.`;
   document.getElementById('ap-approve-btn').style.display = 'inline-block';
@@ -1222,10 +1224,38 @@ function requestApproval(applicantId){
   document.getElementById('overlay').classList.add('active');
 }
 
+/* Publishing a Draft RFQ — this is what makes it appear in the public portal. */
+function requestPublishRfq(rfqId){
+  const r = rfqs.find(x=>x.id===rfqId);
+  pendingAction = {type:'rfq_publish', rfqId};
+  document.getElementById('ap-title').textContent = 'Publish RFQ';
+  document.getElementById('ap-context').textContent = `"${r.title}" (${r.id}) will move from Draft to Open for Applications and become visible on the public portal. This requires an authorised sign-off.`;
+  document.getElementById('ap-approve-btn').style.display = 'inline-block';
+  document.getElementById('ap-approve-btn').textContent = 'Approve → Publish';
+  document.getElementById('ap-reject-btn').style.display = 'none';
+  document.getElementById('modal-approval').classList.add('active');
+  document.getElementById('overlay').classList.add('active');
+}
+
 function submitApproval(isApprove){
   const name = document.getElementById('ap-name').value.trim() || "Unnamed reviewer";
   const role = document.getElementById('ap-role').value.trim() || "Authorised reviewer";
   const comment = document.getElementById('ap-comment').value.trim();
+
+  if(pendingAction && pendingAction.type==='rfq_publish'){
+    const r = rfqs.find(x=>x.id===pendingAction.rfqId);
+    if(isApprove){
+      r.status = "Open for Applications";
+      logAudit(`${r.id} published — now open for applications`, `${name} · ${role}`, comment);
+      toast("RFQ published", `${r.title} is now visible on the public portal.`);
+      sb.from('rfq_rfqs').update({status:r.status}).eq('id', r.id)
+        .then(({error})=>{ if(error){ console.error('rfq publish persist failed', error); toast("Not saved to database", `${r.id} published locally but failed to save — check the console.`); } });
+    }
+    closeAll();
+    renderRfqs();
+    renderDashboard();
+    return;
+  }
 
   if(pendingAction){
     const a = applicants.find(x=>x.id===pendingAction.applicantId);
