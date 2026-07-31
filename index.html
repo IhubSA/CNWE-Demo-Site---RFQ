@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- RFQ Hub — version 1.7.0 (2026-07-31). See VERSION_INFO in the script for the full changelog. -->
+<!-- RFQ Hub — version 1.7.1 (2026-07-31). See VERSION_INFO in the script for the full changelog. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -637,16 +637,17 @@
    SUPABASE
    ============================================================ */
 const SUPABASE_URL = 'https://ziladpnlfajtiboavwvn.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_9PPylQ1CDhMUvQFuE3nW3Q__pTIhYjb';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppbGFkcG5sZmFqdGlib2F2d3ZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ4OTg3NTAsImV4cCI6MjEwMDQ3NDc1MH0.H7I4MPhRI0jP_0FoRp-pA0gqhKz_Q4QX7z732USXEcs';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ============================================================
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "1.7.0",
+  version: "1.7.1",
   date: "2026-07-31",
   changelog: [
+    "1.7.1 (2026-07-31) — Switched to the legacy anon key format after the new sb_publishable_ key returned 403 on all requests from the deployed site",
     "1.7.0 (2026-07-31) — Version badge added; fixed stale 'not connected' message; write failures now show a toast instead of failing silently",
     "1.6.0 (2026-07-31) — Connected to a live Supabase backend (RFQs, applicants, timeline, audit log all persist)",
     "1.5.0 (2026-07-31) — Applicant pipeline rebuilt to match the 17-step EPC Local Procurement Hub flow exactly",
