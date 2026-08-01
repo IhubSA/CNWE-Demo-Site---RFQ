@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.1.0",
-  date: "2026-07-31",
+  version: "2.2.0",
+  date: "2026-08-01",
   changelog: [
+    "2.2.0 (2026-08-01) — Added an installable desktop-app option for admin.html (manifest, service worker, one-click Install button on the login screen and sidebar) using the CNWE logo as the icon; also fixed a broken 'Back to public portal' link on the login screen left over from the page split",
     "2.1.0 (2026-07-31) — Document review comments are now an append-only thread (Add Comment button) instead of a single overwritable note, so nothing a reviewer wrote is ever lost — each entry is attributed to the signed-in reviewer's email and timestamped",
     "2.0.0 (2026-07-31) — Admin console now requires staff login (Supabase Auth). Public portal stays open with no account needed. Database rules rewritten so anonymous visitors can only read open tenders and submit applications — everything else (applicant data, audit trail, decisions, document files) now requires being signed in.",
     "1.9.0 (2026-07-31) — Applicant documents now actually upload to Supabase Storage; reviewers can open/download submitted files and leave a comment on each one",
