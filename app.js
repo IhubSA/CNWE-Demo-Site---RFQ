@@ -250,6 +250,34 @@ if(btnSignout) btnSignout.addEventListener('click', async ()=>{
   window.location.href = 'index.html';
 });
 
+/* ---- admin.html only: "Install as desktop app" ---- */
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  const btnLogin = document.getElementById('install-btn-login');
+  const btnSidebar = document.getElementById('install-btn-sidebar');
+  if(btnLogin) btnLogin.style.display = 'block';
+  if(btnSidebar) btnSidebar.style.display = 'block';
+});
+async function triggerInstall(){
+  if(!deferredInstallPrompt){
+    toast("Already installed or unsupported", "If you don't see an install prompt, your browser may not support this, or it's already installed.");
+    return;
+  }
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  const btnLogin = document.getElementById('install-btn-login');
+  const btnSidebar = document.getElementById('install-btn-sidebar');
+  if(btnLogin) btnLogin.style.display = 'none';
+  if(btnSidebar) btnSidebar.style.display = 'none';
+}
+window.addEventListener('appinstalled', ()=>{ toast("Installed", "CNWE Admin has been added to your desktop."); });
+if('serviceWorker' in navigator && document.getElementById('login-view')){
+  navigator.serviceWorker.register('sw.js').catch(e=>console.error('service worker registration failed', e));
+}
+
 /* ---- index.html only: the public portal's top bar reflects whether the
    visitor happens to already have an admin session (shared across both
    pages via Supabase's browser-stored session) — no page toggling needed

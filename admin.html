@@ -7,6 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#0B3654">
 <title>CNWE Energy (Pty) Ltd — Admin Console</title>
 </head>
 <body>
@@ -27,6 +31,7 @@
     </nav>
     <div class="role-toggle">
       <a id="btn-public" href="index.html" target="_blank" rel="noopener" style="display:block; text-align:center; text-decoration:none;">View public portal ↗</a>
+      <button id="install-btn-sidebar" style="display:none; margin-top:6px;" onclick="triggerInstall()">📥 Install as desktop app</button>
       <button id="btn-signout" style="margin-top:6px;">Sign out</button>
     </div>
     <div class="sidebar-foot" id="sidebar-foot">Connecting to database…</div>
@@ -170,7 +175,8 @@
       <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
       <div id="login-error" style="display:none; color:#F87171; font-size:12px; margin-top:10px;"></div>
       <button class="btn gold" id="login-submit-btn" style="width:100%; margin-top:16px;" onclick="handleLoginSubmit()">Sign in</button>
-      <button class="btn secondary" style="width:100%; margin-top:8px; background:transparent; border-color:rgba(255,255,255,0.18); color:#C9D2DB;" onclick="showPublic()">← Back to public portal</button>
+      <a class="btn secondary" style="display:block; width:100%; margin-top:8px; background:transparent; border-color:rgba(255,255,255,0.18); color:#C9D2DB; text-align:center; text-decoration:none; box-sizing:border-box;" href="index.html">← Back to public portal</a>
+      <button class="btn secondary" id="install-btn-login" style="display:none; width:100%; margin-top:8px; background:transparent; border-color:rgba(255,255,255,0.18); color:#C9D2DB;" onclick="triggerInstall()">📥 Install as desktop app</button>
     </div>
 
   </div>
