@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.2.0",
+  version: "2.3.0",
   date: "2026-08-01",
   changelog: [
+    "2.3.0 (2026-08-01) — RFQ application form now collects company registration no., position, email, contact number, and an optional comments/questions field, all shown in the admin drawer and saved to the database",
     "2.2.0 (2026-08-01) — Added an installable desktop-app option for admin.html (manifest, service worker, one-click Install button on the login screen and sidebar) using the CNWE logo as the icon; also fixed a broken 'Back to public portal' link on the login screen left over from the page split",
     "2.1.0 (2026-07-31) — Document review comments are now an append-only thread (Add Comment button) instead of a single overwritable note, so nothing a reviewer wrote is ever lost — each entry is attributed to the signed-in reviewer's email and timestamped",
     "2.0.0 (2026-07-31) — Admin console now requires staff login (Supabase Auth). Public portal stays open with no account needed. Database rules rewritten so anonymous visitors can only read open tenders and submit applications — everything else (applicant data, audit trail, decisions, document files) now requires being signed in.",
@@ -143,7 +144,14 @@ function seed(){
       fileName: missing.includes(d.name) ? null : d.name.split(' ').slice(0,2).join('_')+'.pdf',
       filePath: null, reviewerComments: []
     }));
-    const a = {id:uid("APP"), rfq:rfqId, business, name, status,
+    const slug = business.toLowerCase().replace(/[^a-z0-9]+/g,'').slice(0,20);
+    const a = {id:uid("APP"), rfq:rfqId, business,
+      companyRegNo: extra.regNo || '2019/123456/07',
+      name, position: extra.position || 'Director',
+      email: extra.email || `info@${slug}.co.za`,
+      phone: extra.phone || '082 000 0000',
+      comments: extra.comments || '',
+      status,
       received:today(extra.receivedOffset||0), reason:extra.reason||null, documents,
       timeline: extra.timeline || [{date:today(extra.receivedOffset||0), action:"Application submitted", actor:name, note:""}]};
     applicants.push(a);
@@ -576,10 +584,14 @@ async function openApplicant(id){
   document.getElementById('ad-status').innerHTML = `<span class="badge ${appBadgeClass(a.status)}">${a.status}</span>` + (a.reason? ` <span class="badge rust">${a.reason}</span>`:'');
 
   document.getElementById('ad-fields').innerHTML = `
-    <div class="field-row"><span class="k">Contact</span><span>${a.name}</span></div>
+    <div class="field-row"><span class="k">Contact</span><span>${a.name}${a.position? ' — '+escapeAttr(a.position):''}</span></div>
+    <div class="field-row"><span class="k">Email</span><span>${a.email? `<a href="mailto:${escapeAttr(a.email)}">${escapeAttr(a.email)}</a>` : '—'}</span></div>
+    <div class="field-row"><span class="k">Phone</span><span>${a.phone? escapeAttr(a.phone) : '—'}</span></div>
+    <div class="field-row"><span class="k">Company reg. no.</span><span class="mono">${a.companyRegNo? escapeAttr(a.companyRegNo) : '—'}</span></div>
     <div class="field-row"><span class="k">RFQ</span><span>${rfqTitle(a.rfq)}</span></div>
     <div class="field-row"><span class="k">Received</span><span class="mono">${a.received}</span></div>
     <div class="field-row"><span class="k">Reference</span><span class="mono">${a.id}</span></div>
+    ${a.comments ? `<div class="field-row" style="display:block;"><span class="k">Comments / questions</span><div style="margin-top:4px; font-size:12.5px; color:var(--ink); background:var(--paper-2); border-radius:var(--radius); padding:8px 10px;">${escapeAttr(a.comments)}</div></div>` : ''}
   `;
 
   const docs = a.documents || [];
@@ -880,7 +892,12 @@ function openApply(rfqId){
   applyDocState = (rfq.requiredDocs||[]).map(d=>({docId:d.id, name:d.name, mandatory:d.mandatory, fileName:null, filePath:null, uploading:false}));
   document.getElementById('apply-context').textContent = `Applying to ${rfqId} — ${rfqTitle(rfqId)}`;
   document.getElementById('apply-business').value='';
+  document.getElementById('apply-regno').value='';
   document.getElementById('apply-name').value='';
+  document.getElementById('apply-position').value='';
+  document.getElementById('apply-email').value='';
+  document.getElementById('apply-phone').value='';
+  document.getElementById('apply-comments').value='';
   renderApplyDocList();
   document.getElementById('modal-apply').classList.add('active');
   document.getElementById('overlay').classList.add('active');
@@ -923,8 +940,21 @@ async function handleDocFile(i, input){
 }
 function submitApplication(){
   const business = document.getElementById('apply-business').value.trim();
+  const regNo = document.getElementById('apply-regno').value.trim();
   const name = document.getElementById('apply-name').value.trim();
-  if(!business || !name){ toast("Missing details","Business name and contact name are both required."); return; }
+  const position = document.getElementById('apply-position').value.trim();
+  const email = document.getElementById('apply-email').value.trim();
+  const phone = document.getElementById('apply-phone').value.trim();
+  const comments = document.getElementById('apply-comments').value.trim();
+
+  if(!business || !regNo || !name || !position || !email || !phone){
+    toast("Missing details","Business name, company registration no., name, position, email and contact number are all required.");
+    return;
+  }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    toast("Check the email address","That doesn't look like a valid email address.");
+    return;
+  }
   if(applyDocState.some(d=>d.uploading)){ toast("Still uploading","Please wait for document uploads to finish before submitting."); return; }
   const missingMandatory = applyDocState.filter(d=>d.mandatory && !d.filePath);
   if(missingMandatory.length){
@@ -932,13 +962,13 @@ function submitApplication(){
     return;
   }
   const documents = applyDocState.map(d=>({docId:d.docId, name:d.name, mandatory:d.mandatory, provided:!!d.filePath, fileName:d.fileName, filePath:d.filePath||null, reviewerComments:[]}));
-  const a = {id:uid("APP"), rfq:applyingTo, business, name, status:"Application Received", received:today(), reason:null, documents,
+  const a = {id:uid("APP"), rfq:applyingTo, business, companyRegNo:regNo, name, position, email, phone, comments, status:"Application Received", received:today(), reason:null, documents,
     timeline:[{date:today(), action:"Application submitted", actor:name}]};
   applicants.push(a);
   logAudit(`New application received from ${business} (${documents.filter(d=>d.provided).length}/${documents.length} documents attached)`, name, `for ${applyingTo}`);
   closeAll();
   toast("Application received", `Reference ${a.id} — "Your application has been successfully received."`);
-  sb.from('rfq_applicants').insert({id:a.id, rfq_id:a.rfq, business:a.business, contact_name:a.name, status:a.status, received_date:a.received, reason:a.reason, documents:a.documents})
+  sb.from('rfq_applicants').insert({id:a.id, rfq_id:a.rfq, business:a.business, company_reg_no:a.companyRegNo, contact_name:a.name, position:a.position, email:a.email, phone:a.phone, comments:a.comments||null, status:a.status, received_date:a.received, reason:a.reason, documents:a.documents})
     .then(({error})=>{ if(error){ console.error('application persist failed', error); toast("Not saved to database", "Your application shows locally but failed to save — please let the site owner know."); return; }
       sb.from('rfq_timeline_events').insert({applicant_id:a.id, event_date:a.timeline[0].date, action:a.timeline[0].action, actor:a.timeline[0].actor})
         .then(({error})=>{ if(error) console.error('application timeline persist failed', error); });
@@ -1049,7 +1079,7 @@ async function pushSeedToSupabase(){
   const { error: e1 } = await sb.from('rfq_rfqs').insert(rfqRows);
   if(e1) console.error('seed rfqs insert failed', e1);
 
-  const appRows = applicants.map(a=>({id:a.id, rfq_id:a.rfq, business:a.business, contact_name:a.name, status:a.status, received_date:a.received, reason:a.reason, documents:a.documents||[]}));
+  const appRows = applicants.map(a=>({id:a.id, rfq_id:a.rfq, business:a.business, company_reg_no:a.companyRegNo||null, contact_name:a.name, position:a.position||null, email:a.email||null, phone:a.phone||null, comments:a.comments||null, status:a.status, received_date:a.received, reason:a.reason, documents:a.documents||[]}));
   const { error: e2 } = await sb.from('rfq_applicants').insert(appRows);
   if(e2) console.error('seed applicants insert failed', e2);
 
@@ -1079,6 +1109,6 @@ async function loadFromSupabase(){
   });
 
   rfqs = (rfqRes.data||[]).map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:Number(r.budget), open:r.open_date, close:r.close_date, desc:r.description, requiredDocs:r.required_docs||[]}));
-  applicants = (appRes.data||[]).map(a=>({id:a.id, rfq:a.rfq_id, business:a.business, name:a.contact_name, status:a.status, received:a.received_date, reason:a.reason, documents:a.documents||[], timeline: timelineByApplicant[a.id] || []}));
+  applicants = (appRes.data||[]).map(a=>({id:a.id, rfq:a.rfq_id, business:a.business, companyRegNo:a.company_reg_no, name:a.contact_name, position:a.position, email:a.email, phone:a.phone, comments:a.comments, status:a.status, received:a.received_date, reason:a.reason, documents:a.documents||[], timeline: timelineByApplicant[a.id] || []}));
   audit = (auditRes.data||[]).map(e=>({ts: (e.ts||'').replace('T',' ').slice(0,16), action:e.action, who:e.who, note:e.note||''}));
 }

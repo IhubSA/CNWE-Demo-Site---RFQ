@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- RFQ Hub — version 2.2.0 (2026-08-01). See VERSION_INFO in the script for the full changelog. -->
+<!-- RFQ Hub — version 2.3.0 (2026-08-01). See VERSION_INFO in the script for the full changelog. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -33,11 +33,20 @@
     <div id="apply-context" style="font-size:12.5px; color:var(--ink-3); margin-bottom:10px;"></div>
     <label>Business name</label>
     <input type="text" id="apply-business" placeholder="Registered business name">
-    <label>Contact name</label>
+    <label>Company registration no.</label>
+    <input type="text" id="apply-regno" placeholder="e.g. 2019/123456/07">
+    <label>Name of applicant</label>
     <input type="text" id="apply-name" placeholder="Your full name">
+    <label>Position</label>
+    <input type="text" id="apply-position" placeholder="e.g. Director, Procurement Officer">
+    <div style="display:flex; gap:12px;">
+      <div style="flex:1;"><label>Email address</label><input type="text" id="apply-email" placeholder="you@company.com"></div>
+      <div style="flex:1;"><label>Contact number</label><input type="text" id="apply-phone" placeholder="e.g. 082 123 4567"></div>
+    </div>
     <label>Required documents</label>
     <div id="apply-doclist"></div>
-    <div style="font-size:11px; color:var(--ink-3); margin-top:2px;">Demo only — files are recorded by name, nothing is actually uploaded or stored.</div>
+    <label>Comments or questions</label>
+    <textarea id="apply-comments" placeholder="Anything you'd like to add or ask about this RFQ (optional)" style="min-height:70px;"></textarea>
   </div>
   <div class="modal-foot">
     <button class="btn secondary" onclick="closeAll()">Cancel</button>
