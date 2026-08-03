@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.6.0",
+  version: "2.6.1",
   date: "2026-08-03",
   changelog: [
+    "2.6.1 (2026-08-03) — Fixed a real bug where every application submitted from the public portal was generating the same ID (since that page never loads other applicants' IDs, by design, so it had no way to count past them) — every submission after the very first collided and got silently rejected by the database. Public applications now get a collision-safe ID that doesn't depend on knowing what already exists.",
     "2.6.0 (2026-08-03) — Added a POPIA privacy notice popup, shown once per browser before someone applies or signs in. Fixed a real bug where document uploads on the application form were being silently rejected by storage security rules — uploads now go through a secure server-side function instead of directly from the browser, which also tightens document privacy further (no direct public write access to file storage at all now).",
     "2.5.2 (2026-08-03) — Renamed the Employees tab to 'System Users & Admin' (room for more admin tools later); removed leftover test accounts, leaving only the super admin",
     "2.5.1 (2026-08-01) — Fixed error messages from the employee invite/remove function being swallowed by a generic browser error instead of showing the real reason",
@@ -108,6 +109,12 @@ const COMMS = [
 
 let uidCounter = 1000;
 function uid(prefix){ uidCounter++; return prefix+"-"+uidCounter; }
+/* Used where the caller can't see existing IDs to avoid colliding with them
+   (the public portal never loads other applicants' data, by design) — a
+   sequential counter isn't safe there, so this uses time + randomness instead. */
+function uniqueId(prefix){
+  return prefix + "-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2,6).toUpperCase();
+}
 function escapeAttr(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function today(offsetDays){ const d=new Date(); d.setDate(d.getDate()+(offsetDays||0)); return d.toISOString().slice(0,10); }
 function nowStamp(){ const d=new Date(); return d.toISOString().slice(0,16).replace('T',' '); }
@@ -1037,7 +1044,7 @@ function submitApplication(){
     return;
   }
   const documents = applyDocState.map(d=>({docId:d.docId, name:d.name, mandatory:d.mandatory, provided:!!d.filePath, fileName:d.fileName, filePath:d.filePath||null, reviewerComments:[]}));
-  const a = {id:uid("APP"), rfq:applyingTo, business, companyRegNo:regNo, name, position, email, phone, comments, status:"Application Received", received:today(), reason:null, documents,
+  const a = {id:uniqueId("APP"), rfq:applyingTo, business, companyRegNo:regNo, name, position, email, phone, comments, status:"Application Received", received:today(), reason:null, documents,
     timeline:[{date:today(), action:"Application submitted", actor:name}]};
   applicants.push(a);
   logAudit(`New application received from ${business} (${documents.filter(d=>d.provided).length}/${documents.length} documents attached)`, name, `for ${applyingTo}`);
