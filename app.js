@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.4.0",
+  version: "2.5.0",
   date: "2026-08-01",
   changelog: [
+    "2.5.0 (2026-08-01) — Employee management is now restricted to a super admin only. This is a fixed designation (not one of the regular checkboxes, and not self-grantable through the UI) — everyone else can no longer view, add, edit, or remove employees, enforced at both the database and the server-side function that creates logins.",
     "2.4.0 (2026-08-01) — Added an Employees section: add/edit/remove staff accounts with granular permissions (Manage RFQs, Screen & Validate, Evaluate & Approve, Manage Contracts, Review Documents, View Audit Trail — nothing ticked means read-only). Permissions are enforced at the database level, not just hidden in the UI. New employees get a real login via a secure server-side function, with a one-time temporary password shown to the admin who added them.",
     "2.3.0 (2026-08-01) — RFQ application form now collects company registration no., position, email, contact number, and an optional comments/questions field, all shown in the admin drawer and saved to the database",
     "2.2.0 (2026-08-01) — Added an installable desktop-app option for admin.html (manifest, service worker, one-click Install button on the login screen and sidebar) using the CNWE logo as the icon; also fixed a broken 'Back to public portal' link on the login screen left over from the page split",
@@ -204,6 +205,10 @@ function seed(){
    NAVIGATION
    ============================================================ */
 function switchView(name){
+  if(name==='employees' && !(currentEmployee && currentEmployee.is_super_admin)){
+    toast("Not available", "Only a super admin can manage employees.");
+    return;
+  }
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+name).classList.add('active');
   document.querySelectorAll('#tabs .tab').forEach(t=>t.classList.toggle('active', t.dataset.view===name));
@@ -1052,6 +1057,9 @@ function applyPermissionUI(){
   });
   const auditTab = document.querySelector('#tabs .tab[data-view="audit"]');
   if(auditTab) auditTab.style.display = can('can_view_audit') ? '' : 'none';
+  const employeesTab = document.querySelector('#tabs .tab[data-view="employees"]');
+  const isSuperAdmin = !!(currentEmployee && currentEmployee.is_super_admin);
+  if(employeesTab) employeesTab.style.display = isSuperAdmin ? '' : 'none';
 }
 
 async function initPublicPage(){
