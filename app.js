@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.6.1",
+  version: "2.6.2",
   date: "2026-08-03",
   changelog: [
+    "2.6.2 (2026-08-03) — If an application still fails to save, the exact error code and message now show directly in the on-screen notification (visible for 20 seconds) instead of only in the browser console — no more digging through DevTools to report a failure",
     "2.6.1 (2026-08-03) — Fixed a real bug where every application submitted from the public portal was generating the same ID (since that page never loads other applicants' IDs, by design, so it had no way to count past them) — every submission after the very first collided and got silently rejected by the database. Public applications now get a collision-safe ID that doesn't depend on knowing what already exists.",
     "2.6.0 (2026-08-03) — Added a POPIA privacy notice popup, shown once per browser before someone applies or signs in. Fixed a real bug where document uploads on the application form were being silently rejected by storage security rules — uploads now go through a secure server-side function instead of directly from the browser, which also tightens document privacy further (no direct public write access to file storage at all now).",
     "2.5.2 (2026-08-03) — Renamed the Employees tab to 'System Users & Admin' (room for more admin tools later); removed leftover test accounts, leaving only the super admin",
@@ -1051,7 +1052,12 @@ function submitApplication(){
   closeAll();
   toast("Application received", `Reference ${a.id} — "Your application has been successfully received."`);
   sb.from('rfq_applicants').insert({id:a.id, rfq_id:a.rfq, business:a.business, company_reg_no:a.companyRegNo, contact_name:a.name, position:a.position, email:a.email, phone:a.phone, comments:a.comments||null, status:a.status, received_date:a.received, reason:a.reason, documents:a.documents})
-    .then(({error})=>{ if(error){ console.error('application persist failed', error); toast("Not saved to database", "Your application shows locally but failed to save — please let the site owner know."); return; }
+    .then(({error})=>{ if(error){
+      console.error('application persist failed', error);
+      const detail = [error.code, error.message].filter(Boolean).join(' — ') || 'Unknown error';
+      toast("Not saved to database", `Reference ${a.id}: ${detail}`, 20000);
+      return;
+    }
       sb.from('rfq_timeline_events').insert({applicant_id:a.id, event_date:a.timeline[0].date, action:a.timeline[0].action, actor:a.timeline[0].actor})
         .then(({error})=>{ if(error) console.error('application timeline persist failed', error); });
     });
@@ -1068,13 +1074,13 @@ function closeAll(){
   if(overlay) overlay.classList.remove('active');
   pendingAction = null;
 }
-function toast(title, msg){
+function toast(title, msg, durationMs){
   const wrap = document.getElementById('toast-wrap');
   const t = document.createElement('div');
   t.className='toast';
   t.innerHTML = `<div class="tt">${title}</div><div>${msg}</div>`;
   wrap.appendChild(t);
-  setTimeout(()=>t.remove(), 5200);
+  setTimeout(()=>t.remove(), durationMs || 5200);
 }
 
 /* ============================================================
