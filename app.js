@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.5.0",
+  version: "2.5.1",
   date: "2026-08-01",
   changelog: [
+    "2.5.1 (2026-08-01) — Fixed error messages from the employee invite/remove function being swallowed by a generic browser error instead of showing the real reason",
     "2.5.0 (2026-08-01) — Employee management is now restricted to a super admin only. This is a fixed designation (not one of the regular checkboxes, and not self-grantable through the UI) — everyone else can no longer view, add, edit, or remove employees, enforced at both the database and the server-side function that creates logins.",
     "2.4.0 (2026-08-01) — Added an Employees section: add/edit/remove staff accounts with granular permissions (Manage RFQs, Screen & Validate, Evaluate & Approve, Manage Contracts, Review Documents, View Audit Trail — nothing ticked means read-only). Permissions are enforced at the database level, not just hidden in the UI. New employees get a real login via a secure server-side function, with a one-time temporary password shown to the admin who added them.",
     "2.3.0 (2026-08-01) — RFQ application form now collects company registration no., position, email, contact number, and an optional comments/questions field, all shown in the admin drawer and saved to the database",
@@ -1125,6 +1126,19 @@ function can(perm){
 /* ============================================================
    EMPLOYEES
    ============================================================ */
+/* supabase-js hides a failed Edge Function's actual response body behind a generic
+   FunctionsHttpError — this pulls out the real message/debug info we sent back. */
+async function unwrapFunctionError(error, data){
+  if(data && data.error) return { message: data.error, debug: data.debug };
+  if(error && error.context && typeof error.context.json === 'function'){
+    try{
+      const body = await error.context.json();
+      return { message: body.error, debug: body.debug };
+    } catch(e){ /* fall through */ }
+  }
+  return { message: (error && error.message) || null, debug: null };
+}
+
 const PERM_LABELS = {
   can_manage_rfqs: 'Manage RFQs',
   can_screen_validate: 'Screen & Validate',
@@ -1220,8 +1234,9 @@ async function saveEmployee(){
     });
     saveBtn.disabled = false; saveBtn.textContent = 'Send invite';
     if(error || (data && data.error)){
-      console.error('employee invite failed', error || data.error, data && data.debug);
-      toast("Could not add employee", (data && data.error) || "Something went wrong — check the console.");
+      const { message, debug } = await unwrapFunctionError(error, data);
+      console.error('employee invite failed', message, debug);
+      toast("Could not add employee", message || "Something went wrong — check the console.");
       return;
     }
     logAudit(`Employee added — ${name} (${email})`, currentEmployee?.email || 'Admin', Object.keys(perms).filter(k=>perms[k]).map(k=>PERM_LABELS[k]).join(', ') || 'Read only');
@@ -1244,8 +1259,9 @@ async function removeEmployee(){
     headers: { Authorization: `Bearer ${session.access_token}` },
   });
   if(error || (data && data.error)){
-    console.error('employee removal failed', error || data.error);
-    toast("Could not remove employee", (data && data.error) || "Something went wrong — check the console.");
+    const { message } = await unwrapFunctionError(error, data);
+    console.error('employee removal failed', message);
+    toast("Could not remove employee", message || "Something went wrong — check the console.");
     return;
   }
   logAudit(`Employee removed — ${e ? e.name+' ('+e.email+')' : editingEmployeeId}`, currentEmployee?.email || 'Admin');
