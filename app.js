@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.5.1",
-  date: "2026-08-01",
+  version: "2.5.2",
+  date: "2026-08-03",
   changelog: [
+    "2.5.2 (2026-08-03) — Renamed the Employees tab to 'System Users & Admin' (room for more admin tools later); removed leftover test accounts, leaving only the super admin",
     "2.5.1 (2026-08-01) — Fixed error messages from the employee invite/remove function being swallowed by a generic browser error instead of showing the real reason",
     "2.5.0 (2026-08-01) — Employee management is now restricted to a super admin only. This is a fixed designation (not one of the regular checkboxes, and not self-grantable through the UI) — everyone else can no longer view, add, edit, or remove employees, enforced at both the database and the server-side function that creates logins.",
     "2.4.0 (2026-08-01) — Added an Employees section: add/edit/remove staff accounts with granular permissions (Manage RFQs, Screen & Validate, Evaluate & Approve, Manage Contracts, Review Documents, View Audit Trail — nothing ticked means read-only). Permissions are enforced at the database level, not just hidden in the UI. New employees get a real login via a secure server-side function, with a one-time temporary password shown to the admin who added them.",

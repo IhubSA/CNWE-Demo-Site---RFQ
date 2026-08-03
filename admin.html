@@ -28,7 +28,7 @@
       <div class="tab" data-view="approvals"><span class="num">04</span><span class="label">Approvals</span></div>
       <div class="tab" data-view="comms"><span class="num">05</span><span class="label">Communications</span></div>
       <div class="tab" data-view="audit"><span class="num">06</span><span class="label">Audit Trail</span></div>
-      <div class="tab" data-view="employees"><span class="num">07</span><span class="label">Employees</span></div>
+      <div class="tab" data-view="employees"><span class="num">07</span><span class="label">System Users &amp; Admin</span></div>
     </nav>
     <div class="role-toggle">
       <a id="btn-public" href="index.html" target="_blank" rel="noopener" style="display:block; text-align:center; text-decoration:none;">View public portal ↗</a>
@@ -167,12 +167,13 @@
       <div class="page-head">
         <div>
           <div class="eyebrow">Access control</div>
-          <h1>Employees</h1>
-          <div class="desc">Everyone here can sign in to the admin console. What they can actually do depends on the permissions ticked below — no permissions means read-only access. Only a super admin can add, edit, or remove employees.</div>
+          <h1>System Users &amp; Admin</h1>
+          <div class="desc">Manage who can sign in and what they can do. More admin tools will live here over time.</div>
         </div>
-        <button class="btn gold" onclick="openAddEmployee()">+ Add employee</button>
       </div>
       <div class="panel">
+        <div class="panel-head"><h3>Employee Access</h3><button class="btn gold small" onclick="openAddEmployee()">+ Add employee</button></div>
+        <div class="panel-body" style="padding:0 18px 12px 18px; font-size:12.5px; color:var(--ink-3);">Everyone below can sign in to the admin console. What they can actually do depends on the permissions ticked per person — no permissions means read-only access. Only a super admin can add, edit, or remove employees.</div>
         <div class="panel-body" style="padding:0;">
           <table id="employees-table"></table>
         </div>
