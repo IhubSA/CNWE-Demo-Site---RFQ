@@ -1220,7 +1220,7 @@ async function saveEmployee(){
     });
     saveBtn.disabled = false; saveBtn.textContent = 'Send invite';
     if(error || (data && data.error)){
-      console.error('employee invite failed', error || data.error);
+      console.error('employee invite failed', error || data.error, data && data.debug);
       toast("Could not add employee", (data && data.error) || "Something went wrong — check the console.");
       return;
     }
