@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.6.2",
+  version: "2.7.0",
   date: "2026-08-03",
   changelog: [
+    "2.7.0 (2026-08-03) — Application submission now goes through a secure server-side function instead of a direct write from the browser, resolving a persistent, hard-to-pin-down permission error that kept recurring on that specific write path. As a side effect, this also removes direct public write access to the applicants/timeline/audit tables entirely, tightening security further. Submissions are now also checked server-side to confirm the RFQ is genuinely still open before accepting them.",
     "2.6.2 (2026-08-03) — If an application still fails to save, the exact error code and message now show directly in the on-screen notification (visible for 20 seconds) instead of only in the browser console — no more digging through DevTools to report a failure",
     "2.6.1 (2026-08-03) — Fixed a real bug where every application submitted from the public portal was generating the same ID (since that page never loads other applicants' IDs, by design, so it had no way to count past them) — every submission after the very first collided and got silently rejected by the database. Public applications now get a collision-safe ID that doesn't depend on knowing what already exists.",
     "2.6.0 (2026-08-03) — Added a POPIA privacy notice popup, shown once per browser before someone applies or signs in. Fixed a real bug where document uploads on the application form were being silently rejected by storage security rules — uploads now go through a secure server-side function instead of directly from the browser, which also tightens document privacy further (no direct public write access to file storage at all now).",
@@ -1048,19 +1049,21 @@ function submitApplication(){
   const a = {id:uniqueId("APP"), rfq:applyingTo, business, companyRegNo:regNo, name, position, email, phone, comments, status:"Application Received", received:today(), reason:null, documents,
     timeline:[{date:today(), action:"Application submitted", actor:name}]};
   applicants.push(a);
-  logAudit(`New application received from ${business} (${documents.filter(d=>d.provided).length}/${documents.length} documents attached)`, name, `for ${applyingTo}`);
   closeAll();
   toast("Application received", `Reference ${a.id} — "Your application has been successfully received."`);
-  sb.from('rfq_applicants').insert({id:a.id, rfq_id:a.rfq, business:a.business, company_reg_no:a.companyRegNo, contact_name:a.name, position:a.position, email:a.email, phone:a.phone, comments:a.comments||null, status:a.status, received_date:a.received, reason:a.reason, documents:a.documents})
-    .then(({error})=>{ if(error){
-      console.error('application persist failed', error);
-      const detail = [error.code, error.message].filter(Boolean).join(' — ') || 'Unknown error';
-      toast("Not saved to database", `Reference ${a.id}: ${detail}`, 20000);
-      return;
+
+  sb.functions.invoke('submit-application', {
+    body: { id:a.id, rfqId:a.rfq, business:a.business, companyRegNo:a.companyRegNo, name:a.name, position:a.position, email:a.email, phone:a.phone, comments:a.comments||null, documents:a.documents, timeline:a.timeline }
+  }).then(async ({data, error})=>{
+    if(error || (data && data.error)){
+      let message = (data && data.error) || (error && error.message);
+      if(error && error.context && typeof error.context.json === 'function'){
+        try{ const body = await error.context.json(); message = body.error || message; } catch(e2){ /* ignore */ }
+      }
+      console.error('application persist failed', message);
+      toast("Not saved to database", `Reference ${a.id}: ${message || 'Unknown error'}`, 20000);
     }
-      sb.from('rfq_timeline_events').insert({applicant_id:a.id, event_date:a.timeline[0].date, action:a.timeline[0].action, actor:a.timeline[0].actor})
-        .then(({error})=>{ if(error) console.error('application timeline persist failed', error); });
-    });
+  });
 }
 
 /* ============================================================
