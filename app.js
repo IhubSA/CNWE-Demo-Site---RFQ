@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.7.0",
+  version: "2.7.1",
   date: "2026-08-03",
   changelog: [
+    "2.7.1 (2026-08-03) — The POPIA privacy notice on the public Apply flow now shows every time someone applies, not just once per browser. (The admin sign-in POPIA notice is unchanged — still once per browser.)",
     "2.7.0 (2026-08-03) — Application submission now goes through a secure server-side function instead of a direct write from the browser, resolving a persistent, hard-to-pin-down permission error that kept recurring on that specific write path. As a side effect, this also removes direct public write access to the applicants/timeline/audit tables entirely, tightening security further. Submissions are now also checked server-side to confirm the RFQ is genuinely still open before accepting them.",
     "2.6.2 (2026-08-03) — If an application still fails to save, the exact error code and message now show directly in the on-screen notification (visible for 20 seconds) instead of only in the browser console — no more digging through DevTools to report a failure",
     "2.6.1 (2026-08-03) — Fixed a real bug where every application submitted from the public portal was generating the same ID (since that page never loads other applicants' IDs, by design, so it had no way to count past them) — every submission after the very first collided and got silently rejected by the database. Public applications now get a collision-safe ID that doesn't depend on knowing what already exists.",
@@ -263,7 +264,6 @@ function popiaMark(key){
 }
 let pendingApplyRfqId = null;
 function handleApplyClick(rfqId){
-  if(popiaSeen('popia_ack_public')){ openApply(rfqId); return; }
   pendingApplyRfqId = rfqId;
   const modal = document.getElementById('modal-popia-apply');
   if(!modal){ openApply(rfqId); return; } // safety fallback if the modal isn't on this page
@@ -279,7 +279,6 @@ function acknowledgePopiaThenSubmit(){
 }
 function acknowledgePopia(which){
   if(which==='apply'){
-    popiaMark('popia_ack_public');
     closeAll();
     if(pendingApplyRfqId){ openApply(pendingApplyRfqId); pendingApplyRfqId = null; }
   } else if(which==='signin'){
