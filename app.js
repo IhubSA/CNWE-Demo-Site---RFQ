@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.3.0",
+  version: "2.4.0",
   date: "2026-08-01",
   changelog: [
+    "2.4.0 (2026-08-01) — Added an Employees section: add/edit/remove staff accounts with granular permissions (Manage RFQs, Screen & Validate, Evaluate & Approve, Manage Contracts, Review Documents, View Audit Trail — nothing ticked means read-only). Permissions are enforced at the database level, not just hidden in the UI. New employees get a real login via a secure server-side function, with a one-time temporary password shown to the admin who added them.",
     "2.3.0 (2026-08-01) — RFQ application form now collects company registration no., position, email, contact number, and an optional comments/questions field, all shown in the admin drawer and saved to the database",
     "2.2.0 (2026-08-01) — Added an installable desktop-app option for admin.html (manifest, service worker, one-click Install button on the login screen and sidebar) using the CNWE logo as the icon; also fixed a broken 'Back to public portal' link on the login screen left over from the page split",
     "2.1.0 (2026-07-31) — Document review comments are now an append-only thread (Add Comment button) instead of a single overwritable note, so nothing a reviewer wrote is ever lost — each entry is attributed to the signed-in reviewer's email and timestamped",
@@ -212,6 +213,7 @@ function switchView(name){
   if(name==='approvals') renderApprovals();
   if(name==='comms') renderComms();
   if(name==='audit') renderAudit();
+  if(name==='employees') renderEmployees();
 }
 document.querySelectorAll('#tabs .tab').forEach(t=>t.addEventListener('click',()=>switchView(t.dataset.view)));
 
@@ -483,7 +485,7 @@ function renderRfqs(){
       <td class="ref mono">${r.id}</td><td>${r.title}</td><td>${r.category}</td><td class="mono">${zar(r.budget)}</td>
       <td><span class="badge ${rfqBadgeClass(r.status)}">${r.status}</span></td>
       <td class="mono">${r.open}</td><td class="mono">${r.close}</td>
-      <td>${r.status==="Draft" ? `<button class="btn small gold" onclick="event.stopPropagation(); requestPublishRfq('${r.id}')">Publish</button>` : ''}</td></tr>`).join('')}
+      <td>${r.status==="Draft" && can('can_manage_rfqs') ? `<button class="btn small gold" onclick="event.stopPropagation(); requestPublishRfq('${r.id}')">Publish</button>` : ''}</td></tr>`).join('')}
   `;
 }
 function focusRfqInPipeline(id){
@@ -626,31 +628,49 @@ async function openApplicant(id){
               <div class="dc-meta">${escapeAttr(c.author)}${c.date? ' · '+escapeAttr(c.date):''}</div>
             </div>`).join('') || `<div class="dc-empty">No comments yet.</div>`}
           <div class="doc-comment-add">
-            <input type="text" class="doc-comment-input" id="new-comment-${d.docId}" placeholder="Add a review comment…" onkeydown="if(event.key==='Enter'){addDocComment('${a.id}','${d.docId}');}">
-            <button class="btn small secondary" onclick="addDocComment('${a.id}','${d.docId}')">Add Comment</button>
+            ${can('can_review_documents') ? `
+              <input type="text" class="doc-comment-input" id="new-comment-${d.docId}" placeholder="Add a review comment…" onkeydown="if(event.key==='Enter'){addDocComment('${a.id}','${d.docId}');}">
+              <button class="btn small secondary" onclick="addDocComment('${a.id}','${d.docId}')">Add Comment</button>
+            ` : `<span style="font-size:11px; color:var(--ink-3);">You don't have permission to add document comments.</span>`}
           </div>
         </div>` : ''}
     </div>`).join('') : `<div style="font-size:12px; color:var(--ink-3);">No document requirements were set on this RFQ.</div>`;
 
   const actionsEl = document.getElementById('ad-actions');
   const nextStage = KANBAN_STAGES[KANBAN_STAGES.indexOf(a.status)+1];
+  const canAny = can('can_screen_validate') || can('can_evaluate_approve') || can('can_manage_contracts') || can('can_review_documents');
 
   if(a.status==="Unsuccessful"||a.status==="Closed"){
     actionsEl.innerHTML = `<span style="font-size:12px;color:var(--ink-3);">Case closed — no further stage changes.</span>`;
   } else if(a.status==="Awaiting Signature"){
-    actionsEl.innerHTML = `
-      <button class="btn small gold" onclick="advanceDirect('${a.id}','Contract Signed','Contract Manager (e-signature platform)')">✓ Mark fully signed</button>
-      <button class="btn small secondary" onclick="sendReminder('${a.id}')">Send reminder / escalate</button>
-      <div style="width:100%; font-size:11px; color:var(--ink-3); margin-top:2px;">Matches the flow's "Fully signed?" check — No loops back with a reminder, it doesn't regret the case.</div>`;
+    if(can('can_manage_contracts')){
+      actionsEl.innerHTML = `
+        <button class="btn small gold" onclick="advanceDirect('${a.id}','Contract Signed','Contract Manager (e-signature platform)')">✓ Mark fully signed</button>
+        <button class="btn small secondary" onclick="sendReminder('${a.id}')">Send reminder / escalate</button>
+        <div style="width:100%; font-size:11px; color:var(--ink-3); margin-top:2px;">Matches the flow's "Fully signed?" check — No loops back with a reminder, it doesn't regret the case.</div>`;
+    } else {
+      actionsEl.innerHTML = `<span style="font-size:12px;color:var(--ink-3);">You don't have permission to manage contracts.</span>`;
+    }
   } else if(GATE_STAGES.includes(a.status)){
+    const gatePerm = a.status==="Recommendation Recorded" ? 'can_evaluate_approve'
+      : a.status==="Contract Being Drafted" ? 'can_manage_contracts'
+      : 'can_screen_validate';
     const hasRegret = !!REGRET_POOLS[a.status];
-    actionsEl.innerHTML = `
-      <button class="btn small gold" onclick="requestApproval('${a.id}')">Record decision — ${GATE_QUESTION[a.status]}</button>
-      <div style="width:100%; font-size:11px; color:var(--ink-3); margin-top:2px;">This is a human decision point in the flow${hasRegret? ' — it can end the case as unsuccessful' : ''}.</div>`;
+    if(can(gatePerm)){
+      actionsEl.innerHTML = `
+        <button class="btn small gold" onclick="requestApproval('${a.id}')">Record decision — ${GATE_QUESTION[a.status]}</button>
+        <div style="width:100%; font-size:11px; color:var(--ink-3); margin-top:2px;">This is a human decision point in the flow${hasRegret? ' — it can end the case as unsuccessful' : ''}.</div>`;
+    } else {
+      actionsEl.innerHTML = `<span style="font-size:12px;color:var(--ink-3);">You don't have permission to record this decision.</span>`;
+    }
   } else if(nextStage){
-    actionsEl.innerHTML = `
-      <button class="btn small gold" onclick="advanceDirect('${a.id}','${nextStage}','System (automated)')">Advance to: ${nextStage}</button>
-      <div style="width:100%; font-size:11px; color:var(--ink-3); margin-top:2px;">Automated step in the flow — no sign-off required.</div>`;
+    if(canAny){
+      actionsEl.innerHTML = `
+        <button class="btn small gold" onclick="advanceDirect('${a.id}','${nextStage}','System (automated)')">Advance to: ${nextStage}</button>
+        <div style="width:100%; font-size:11px; color:var(--ink-3); margin-top:2px;">Automated step in the flow — no sign-off required.</div>`;
+    } else {
+      actionsEl.innerHTML = `<span style="font-size:12px;color:var(--ink-3);">You have read-only access.</span>`;
+    }
   } else {
     actionsEl.innerHTML = `<span style="font-size:12px;color:var(--ink-3);">End of pipeline.</span>`;
   }
@@ -1012,6 +1032,8 @@ async function initAdminPage(){
       renderApplicants();
       renderApprovals();
       renderAudit();
+      renderEmployees();
+      applyPermissionUI();
       showAdmin();
     } else {
       showLogin();
@@ -1021,6 +1043,15 @@ async function initAdminPage(){
     showLogin();
     toast("Working offline", "Couldn't reach the database — try again shortly.");
   }
+}
+
+/* Hides admin-console affordances the current employee doesn't have permission for. */
+function applyPermissionUI(){
+  document.querySelectorAll('.btn.gold[onclick="openNewRfq()"]').forEach(btn=>{
+    btn.style.display = can('can_manage_rfqs') ? '' : 'none';
+  });
+  const auditTab = document.querySelector('#tabs .tab[data-view="audit"]');
+  if(auditTab) auditTab.style.display = can('can_view_audit') ? '' : 'none';
 }
 
 async function initPublicPage(){
@@ -1058,6 +1089,7 @@ async function loadAdminData(){
       await loadFromSupabase();
       if(footEl) footEl.innerHTML = `🟢 Connected to Supabase — live data (${rfqs.length} RFQs, ${applicants.length} applicants).`;
     }
+    await loadEmployeesAndPermissions();
   } catch(e){
     console.error('Supabase unavailable, showing local demo data only', e);
     seed();
@@ -1065,6 +1097,160 @@ async function loadAdminData(){
     toast("Working offline", "Couldn't reach the database — showing local demo data that won't be saved.");
   }
   bumpUidCounterPastExisting();
+}
+
+let employees = [];
+let currentEmployee = null; // the logged-in user's own permission row
+async function loadEmployeesAndPermissions(){
+  const { data, error } = await sb.from('rfq_employees').select('*').order('created_at', {ascending:true});
+  if(error){ console.error('employees load failed', error); return; }
+  employees = data || [];
+  const { data: { user } } = await sb.auth.getUser();
+  currentEmployee = employees.find(e=>e.id === (user && user.id)) || null;
+}
+function can(perm){
+  // The founding admin (no employees row resolvable yet, e.g. mid-load) defaults to
+  // false-safe; once currentEmployee loads, real permissions apply.
+  return !!(currentEmployee && currentEmployee[perm]);
+}
+
+/* ============================================================
+   EMPLOYEES
+   ============================================================ */
+const PERM_LABELS = {
+  can_manage_rfqs: 'Manage RFQs',
+  can_screen_validate: 'Screen & Validate',
+  can_evaluate_approve: 'Evaluate & Approve',
+  can_manage_contracts: 'Manage Contracts',
+  can_review_documents: 'Review Documents',
+  can_view_audit: 'View Audit Trail',
+};
+function renderEmployees(){
+  const el = document.getElementById('employees-table');
+  if(!el) return;
+  el.innerHTML = `
+    <tr><th>Name</th><th>Email</th><th>Position</th><th>Permissions</th><th></th></tr>
+    ${employees.map(e=>{
+      const perms = Object.keys(PERM_LABELS).filter(k=>e[k]);
+      const permBadges = perms.length ? perms.map(k=>`<span class="badge gold" style="margin:1px;">${PERM_LABELS[k]}</span>`).join('') : `<span class="badge ink">Read only</span>`;
+      return `<tr class="rowlink" onclick="openEditEmployee('${e.id}')">
+        <td>${escapeAttr(e.name)}</td><td>${escapeAttr(e.email)}</td><td>${escapeAttr(e.position||'—')}</td>
+        <td>${permBadges}</td><td class="mono ref">${e.id===currentEmployee?.id? 'you' : ''}</td></tr>`;
+    }).join('')}
+  `;
+}
+
+let editingEmployeeId = null;
+function openAddEmployee(){
+  editingEmployeeId = null;
+  document.getElementById('emp-modal-title').textContent = 'Add employee';
+  document.getElementById('emp-name').value = '';
+  document.getElementById('emp-email').value = '';
+  document.getElementById('emp-email').disabled = false;
+  document.getElementById('emp-position').value = '';
+  ['rfqs','screen','evaluate','contracts','docs','audit'].forEach(k=>{ document.getElementById('emp-perm-'+k).checked = false; });
+  document.getElementById('emp-remove-btn').style.display = 'none';
+  document.getElementById('emp-save-btn').textContent = 'Send invite';
+  document.getElementById('modal-employee').classList.add('active');
+  document.getElementById('overlay').classList.add('active');
+}
+function openEditEmployee(id){
+  const e = employees.find(x=>x.id===id);
+  if(!e) return;
+  editingEmployeeId = id;
+  document.getElementById('emp-modal-title').textContent = 'Edit employee';
+  document.getElementById('emp-name').value = e.name||'';
+  document.getElementById('emp-email').value = e.email||'';
+  document.getElementById('emp-email').disabled = true; // email can't change post-invite in this build
+  document.getElementById('emp-position').value = e.position||'';
+  document.getElementById('emp-perm-rfqs').checked = !!e.can_manage_rfqs;
+  document.getElementById('emp-perm-screen').checked = !!e.can_screen_validate;
+  document.getElementById('emp-perm-evaluate').checked = !!e.can_evaluate_approve;
+  document.getElementById('emp-perm-contracts').checked = !!e.can_manage_contracts;
+  document.getElementById('emp-perm-docs').checked = !!e.can_review_documents;
+  document.getElementById('emp-perm-audit').checked = !!e.can_view_audit;
+  document.getElementById('emp-remove-btn').style.display = 'inline-block';
+  document.getElementById('emp-save-btn').textContent = 'Save changes';
+  document.getElementById('modal-employee').classList.add('active');
+  document.getElementById('overlay').classList.add('active');
+}
+function readPermsFromForm(){
+  return {
+    can_manage_rfqs: document.getElementById('emp-perm-rfqs').checked,
+    can_screen_validate: document.getElementById('emp-perm-screen').checked,
+    can_evaluate_approve: document.getElementById('emp-perm-evaluate').checked,
+    can_manage_contracts: document.getElementById('emp-perm-contracts').checked,
+    can_review_documents: document.getElementById('emp-perm-docs').checked,
+    can_view_audit: document.getElementById('emp-perm-audit').checked,
+  };
+}
+async function saveEmployee(){
+  const name = document.getElementById('emp-name').value.trim();
+  const email = document.getElementById('emp-email').value.trim();
+  const position = document.getElementById('emp-position').value.trim();
+  if(!name || !email){ toast("Missing details", "Name and email are both required."); return; }
+  const perms = readPermsFromForm();
+  const saveBtn = document.getElementById('emp-save-btn');
+
+  if(editingEmployeeId){
+    saveBtn.disabled = true;
+    const { error } = await sb.from('rfq_employees').update({ name, position: position||null, ...perms }).eq('id', editingEmployeeId);
+    saveBtn.disabled = false;
+    if(error){ console.error('employee update failed', error); toast("Not saved", "Could not update this employee — check the console."); return; }
+    logAudit(`Employee updated — ${name} (${email})`, currentEmployee?.email || 'Admin', Object.keys(perms).filter(k=>perms[k]).map(k=>PERM_LABELS[k]).join(', ') || 'Read only');
+    toast("Employee updated", `${name}'s details have been saved.`);
+    closeAll();
+    await loadEmployeesAndPermissions();
+    renderEmployees();
+    applyPermissionUI();
+  } else {
+    saveBtn.disabled = true; saveBtn.textContent = 'Sending invite…';
+    const { data: { session } } = await sb.auth.getSession();
+    const { data, error } = await sb.functions.invoke('manage-employee', {
+      body: { action: 'invite', name, email, position, permissions: perms },
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    saveBtn.disabled = false; saveBtn.textContent = 'Send invite';
+    if(error || (data && data.error)){
+      console.error('employee invite failed', error || data.error);
+      toast("Could not add employee", (data && data.error) || "Something went wrong — check the console.");
+      return;
+    }
+    logAudit(`Employee added — ${name} (${email})`, currentEmployee?.email || 'Admin', Object.keys(perms).filter(k=>perms[k]).map(k=>PERM_LABELS[k]).join(', ') || 'Read only');
+    closeAll();
+    await loadEmployeesAndPermissions();
+    renderEmployees();
+    document.getElementById('tp-name').textContent = name;
+    document.getElementById('tp-password').value = data.tempPassword;
+    document.getElementById('modal-temp-password').classList.add('active');
+    document.getElementById('overlay').classList.add('active');
+  }
+}
+async function removeEmployee(){
+  if(!editingEmployeeId) return;
+  const e = employees.find(x=>x.id===editingEmployeeId);
+  if(!confirm(`Remove ${e ? e.name : 'this employee'}? They will no longer be able to sign in.`)) return;
+  const { data: { session } } = await sb.auth.getSession();
+  const { data, error } = await sb.functions.invoke('manage-employee', {
+    body: { action: 'deactivate', employeeId: editingEmployeeId },
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+  if(error || (data && data.error)){
+    console.error('employee removal failed', error || data.error);
+    toast("Could not remove employee", (data && data.error) || "Something went wrong — check the console.");
+    return;
+  }
+  logAudit(`Employee removed — ${e ? e.name+' ('+e.email+')' : editingEmployeeId}`, currentEmployee?.email || 'Admin');
+  toast("Employee removed", `${e ? e.name : 'Employee'} can no longer sign in.`);
+  closeAll();
+  await loadEmployeesAndPermissions();
+  renderEmployees();
+}
+function copyTempPassword(){
+  const input = document.getElementById('tp-password');
+  input.select();
+  try{ document.execCommand('copy'); toast("Copied", "Temporary password copied to clipboard."); }
+  catch(e){ toast("Couldn't copy", "Please select and copy the password manually."); }
 }
 
 function bumpUidCounterPastExisting(){

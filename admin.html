@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- RFQ Hub — version 2.3.0 (2026-08-01). See VERSION_INFO in the script for the full changelog. -->
+<!-- RFQ Hub — version 2.4.0 (2026-08-01). See VERSION_INFO in the script for the full changelog. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -28,6 +28,7 @@
       <div class="tab" data-view="approvals"><span class="num">04</span><span class="label">Approvals</span></div>
       <div class="tab" data-view="comms"><span class="num">05</span><span class="label">Communications</span></div>
       <div class="tab" data-view="audit"><span class="num">06</span><span class="label">Audit Trail</span></div>
+      <div class="tab" data-view="employees"><span class="num">07</span><span class="label">Employees</span></div>
     </nav>
     <div class="role-toggle">
       <a id="btn-public" href="index.html" target="_blank" rel="noopener" style="display:block; text-align:center; text-decoration:none;">View public portal ↗</a>
@@ -161,6 +162,23 @@
       <div class="panel"><div class="panel-body" id="audit-list"></div></div>
     </section>
 
+    <!-- EMPLOYEES -->
+    <section class="view" id="view-employees">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">Access control</div>
+          <h1>Employees</h1>
+          <div class="desc">Everyone here can sign in to the admin console. What they can actually do depends on the permissions ticked below — no permissions means read-only access.</div>
+        </div>
+        <button class="btn gold" onclick="openAddEmployee()">+ Add employee</button>
+      </div>
+      <div class="panel">
+        <div class="panel-body" style="padding:0;">
+          <table id="employees-table"></table>
+        </div>
+      </div>
+    </section>
+
   </main>
 
   <!-- ================= LOGIN ================= -->
@@ -261,6 +279,49 @@
     <button class="btn secondary" onclick="closeAll()">Cancel</button>
     <button class="btn danger" id="ap-reject-btn" onclick="submitApproval(false)">Reject / Regret</button>
     <button class="btn gold" id="ap-approve-btn" onclick="submitApproval(true)">Approve</button>
+  </div>
+</div>
+
+<div class="modal" id="modal-employee">
+  <div class="modal-head"><h3 id="emp-modal-title">Add employee</h3><button class="drawer-close" style="position:static;" onclick="closeAll()">✕</button></div>
+  <div class="modal-body">
+    <label>Full name</label>
+    <input type="text" id="emp-name" placeholder="e.g. Thandiwe Mokoena">
+    <label>Email address</label>
+    <input type="text" id="emp-email" placeholder="name@cnwe-energy.co.za">
+    <label>Position</label>
+    <input type="text" id="emp-position" placeholder="e.g. Procurement Officer">
+    <label>Permissions</label>
+    <div style="display:flex; flex-direction:column; gap:8px; margin-top:6px; font-size:13px;">
+      <label style="display:flex; align-items:center; gap:8px; margin:0; font-weight:400;"><input type="checkbox" id="emp-perm-rfqs" style="width:auto;"> Manage RFQs — create and publish tenders</label>
+      <label style="display:flex; align-items:center; gap:8px; margin:0; font-weight:400;"><input type="checkbox" id="emp-perm-screen" style="width:auto;"> Screen & Validate Applicants</label>
+      <label style="display:flex; align-items:center; gap:8px; margin:0; font-weight:400;"><input type="checkbox" id="emp-perm-evaluate" style="width:auto;"> Evaluate & Approve Applicants</label>
+      <label style="display:flex; align-items:center; gap:8px; margin:0; font-weight:400;"><input type="checkbox" id="emp-perm-contracts" style="width:auto;"> Manage Contracts</label>
+      <label style="display:flex; align-items:center; gap:8px; margin:0; font-weight:400;"><input type="checkbox" id="emp-perm-docs" style="width:auto;"> Review Documents & Comments</label>
+      <label style="display:flex; align-items:center; gap:8px; margin:0; font-weight:400;"><input type="checkbox" id="emp-perm-audit" style="width:auto;"> View Audit Trail</label>
+    </div>
+    <div style="margin-top:12px; padding:10px 12px; background:var(--paper-2); border-radius:var(--radius); font-size:12px; color:var(--ink-2);">
+      Nothing ticked means read-only access — they can sign in and view the console, but can't take any action.
+    </div>
+  </div>
+  <div class="modal-foot">
+    <button class="btn secondary" onclick="closeAll()">Cancel</button>
+    <button class="btn danger" id="emp-remove-btn" style="display:none;" onclick="removeEmployee()">Remove employee</button>
+    <button class="btn gold" id="emp-save-btn" onclick="saveEmployee()">Save</button>
+  </div>
+</div>
+
+<div class="modal" id="modal-temp-password">
+  <div class="modal-head"><h3>Employee added</h3><button class="drawer-close" style="position:static;" onclick="closeAll()">✕</button></div>
+  <div class="modal-body">
+    <div style="font-size:13px; color:var(--ink-2); margin-bottom:12px;">Share this temporary password with <span id="tp-name" style="font-weight:600;"></span> so they can sign in. They won't be able to see it again after you close this.</div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <input type="text" id="tp-password" readonly style="font-family:'IBM Plex Mono',monospace; font-weight:600;">
+      <button class="btn secondary small" onclick="copyTempPassword()">Copy</button>
+    </div>
+  </div>
+  <div class="modal-foot">
+    <button class="btn gold" onclick="closeAll()">Done</button>
   </div>
 </div>
 
