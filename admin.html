@@ -193,7 +193,7 @@
       <label style="color:#C9D2DB;">Password</label>
       <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
       <div id="login-error" style="display:none; color:#F87171; font-size:12px; margin-top:10px;"></div>
-      <button class="btn gold" id="login-submit-btn" style="width:100%; margin-top:16px;" onclick="handleLoginSubmit()">Sign in</button>
+      <button class="btn gold" id="login-submit-btn" style="width:100%; margin-top:16px;" onclick="acknowledgePopiaThenSubmit()">Sign in</button>
       <a class="btn secondary" style="display:block; width:100%; margin-top:8px; background:transparent; border-color:rgba(255,255,255,0.18); color:#C9D2DB; text-align:center; text-decoration:none; box-sizing:border-box;" href="index.html">← Back to public portal</a>
       <button class="btn secondary" id="install-btn-login" style="display:none; width:100%; margin-top:8px; background:transparent; border-color:rgba(255,255,255,0.18); color:#C9D2DB;" onclick="triggerInstall()">📥 Install as desktop app</button>
     </div>
@@ -202,6 +202,17 @@
 </div>
 
 <div class="overlay" id="overlay" onclick="closeAll()"></div>
+
+<div class="modal" id="modal-popia-signin">
+  <div class="modal-head"><h3>Your information is protected</h3><button class="drawer-close" style="position:static;" onclick="closeAll()">✕</button></div>
+  <div class="modal-body" style="font-size:13px; color:var(--ink-2); line-height:1.6;">
+    <p style="margin-top:0;">This admin console processes personal information relating to tender applicants and staff — including names, contact details, submitted documents, and records of decisions and system activity.</p>
+    <p style="margin-bottom:0;">All information is handled in accordance with South Africa's <strong>Protection of Personal Information Act (POPIA)</strong>. Access is restricted to authorised staff, and every action in this system is logged for accountability.</p>
+  </div>
+  <div class="modal-foot">
+    <button class="btn gold" onclick="acknowledgePopia('signin')">I understand — continue</button>
+  </div>
+</div>
 
 <div class="drawer" id="applicant-drawer">
   <div class="drawer-head">

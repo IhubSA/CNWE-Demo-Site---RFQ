@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.5.2",
+  version: "2.6.0",
   date: "2026-08-03",
   changelog: [
+    "2.6.0 (2026-08-03) — Added a POPIA privacy notice popup, shown once per browser before someone applies or signs in. Fixed a real bug where document uploads on the application form were being silently rejected by storage security rules — uploads now go through a secure server-side function instead of directly from the browser, which also tightens document privacy further (no direct public write access to file storage at all now).",
     "2.5.2 (2026-08-03) — Renamed the Employees tab to 'System Users & Admin' (room for more admin tools later); removed leftover test accounts, leaving only the super admin",
     "2.5.1 (2026-08-01) — Fixed error messages from the employee invite/remove function being swallowed by a generic browser error instead of showing the real reason",
     "2.5.0 (2026-08-01) — Employee management is now restricted to a super admin only. This is a fixed designation (not one of the regular checkboxes, and not self-grantable through the UI) — everyone else can no longer view, add, edit, or remove employees, enforced at both the database and the server-side function that creates logins.",
@@ -240,6 +241,43 @@ function showLogin(){
   if(sidebarLogo && loginLogo) loginLogo.src = sidebarLogo.src;
   document.getElementById('login-error').style.display = 'none';
   document.getElementById('login-password').value = '';
+}
+
+/* ============================================================
+   POPIA NOTICE — shown once per browser before applying or signing in.
+   ============================================================ */
+function popiaSeen(key){
+  try{ return localStorage.getItem(key) === '1'; } catch(e){ return false; }
+}
+function popiaMark(key){
+  try{ localStorage.setItem(key, '1'); } catch(e){ /* private browsing etc. — just don't persist */ }
+}
+let pendingApplyRfqId = null;
+function handleApplyClick(rfqId){
+  if(popiaSeen('popia_ack_public')){ openApply(rfqId); return; }
+  pendingApplyRfqId = rfqId;
+  const modal = document.getElementById('modal-popia-apply');
+  if(!modal){ openApply(rfqId); return; } // safety fallback if the modal isn't on this page
+  modal.classList.add('active');
+  document.getElementById('overlay').classList.add('active');
+}
+function acknowledgePopiaThenSubmit(){
+  if(popiaSeen('popia_ack_admin')){ handleLoginSubmit(); return; }
+  const modal = document.getElementById('modal-popia-signin');
+  if(!modal){ handleLoginSubmit(); return; }
+  modal.classList.add('active');
+  document.getElementById('overlay').classList.add('active');
+}
+function acknowledgePopia(which){
+  if(which==='apply'){
+    popiaMark('popia_ack_public');
+    closeAll();
+    if(pendingApplyRfqId){ openApply(pendingApplyRfqId); pendingApplyRfqId = null; }
+  } else if(which==='signin'){
+    popiaMark('popia_ack_admin');
+    closeAll();
+    handleLoginSubmit();
+  }
 }
 
 async function handleLoginSubmit(){
@@ -908,7 +946,7 @@ function renderPublic(){
       <h3>${r.title}</h3>
       <div class="meta">${r.id} · ${r.category} · Closes ${r.close}</div>
       <div class="desc">${r.desc}</div>
-      <button class="btn gold" onclick="openApply('${r.id}')">Apply now</button>
+      <button class="btn gold" onclick="handleApplyClick('${r.id}')">Apply now</button>
     </div>`).join('') : `<div class="empty-state">No RFQs are currently open for applications.</div>`;
 }
 let applyingTo = null;
@@ -955,8 +993,18 @@ async function handleDocFile(i, input){
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
   const path = `${applyingTo}/${Date.now()}_${safeName}`;
   try{
-    const { error: uploadErr } = await sb.storage.from('applicant-documents').upload(path, file, {upsert:false});
-    if(uploadErr) throw uploadErr;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('path', path);
+    const { data, error } = await sb.functions.invoke('upload-document', { body: formData });
+    if(error){
+      let message = error.message;
+      if(error.context && typeof error.context.json === 'function'){
+        try{ const body = await error.context.json(); message = body.error || message; } catch(e2){ /* ignore */ }
+      }
+      throw new Error(message);
+    }
+    if(data && data.error) throw new Error(data.error);
     applyDocState[i].filePath = path;
   } catch(e){
     console.error('document upload failed', e);
