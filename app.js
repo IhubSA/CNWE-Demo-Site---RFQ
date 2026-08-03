@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.7.1",
+  version: "2.8.0",
   date: "2026-08-03",
   changelog: [
+    "2.8.0 (2026-08-03) — Added the plumbing for automated emails: application confirmation, Preferred Bidder notification, Contract Drafted notification, a manual 'Send signing invite' button with an optional custom note, and rejection notices. All five are wired up and logged in a new Email Log (visible under Communications) whether or not real sending is connected yet — nothing sends for real until a Resend domain and API key are configured, so this is safe to test against live data in the meantime.",
     "2.7.1 (2026-08-03) — The POPIA privacy notice on the public Apply flow now shows every time someone applies, not just once per browser. (The admin sign-in POPIA notice is unchanged — still once per browser.)",
     "2.7.0 (2026-08-03) — Application submission now goes through a secure server-side function instead of a direct write from the browser, resolving a persistent, hard-to-pin-down permission error that kept recurring on that specific write path. As a side effect, this also removes direct public write access to the applicants/timeline/audit tables entirely, tightening security further. Submissions are now also checked server-side to confirm the RFQ is genuinely still open before accepting them.",
     "2.6.2 (2026-08-03) — If an application still fails to save, the exact error code and message now show directly in the on-screen notification (visible for 20 seconds) instead of only in the browser console — no more digging through DevTools to report a failure",
@@ -700,6 +701,7 @@ async function openApplicant(id){
       actionsEl.innerHTML = `
         <button class="btn small gold" onclick="advanceDirect('${a.id}','Contract Signed','Contract Manager (e-signature platform)')">✓ Mark fully signed</button>
         <button class="btn small secondary" onclick="sendReminder('${a.id}')">Send reminder / escalate</button>
+        <button class="btn small secondary" onclick="sendSigningInvite('${a.id}')">✉ Send signing invite</button>
         <div style="width:100%; font-size:11px; color:var(--ink-3); margin-top:2px;">Matches the flow's "Fully signed?" check — No loops back with a reminder, it doesn't regret the case.</div>`;
     } else {
       actionsEl.innerHTML = `<span style="font-size:12px;color:var(--ink-3);">You don't have permission to manage contracts.</span>`;
@@ -789,6 +791,7 @@ function advanceDirect(applicantId, nextStage, actor){
   persistApplicantChange(a, entry);
   logAudit(`${a.business} advanced to ${nextStage}`, actor||"System", "automated step");
   toast("Advanced", `${a.business} is now ${nextStage}.`);
+  if(nextStage === 'Contract Being Drafted') triggerEmail('contract_drafted', a.id);
   renderApplicants(); renderApprovals(); renderDashboard();
   if(document.getElementById('applicant-drawer').classList.contains('active')) openApplicant(applicantId);
 }
@@ -803,6 +806,22 @@ function sendReminder(applicantId){
   logAudit(`Signature reminder sent to ${a.business}`, "System", "escalation triggered");
   toast("Reminder sent", `${a.business} has been reminded — case stays at Awaiting Signature.`);
   renderApplicants(); renderApprovals(); renderDashboard();
+  if(document.getElementById('applicant-drawer').classList.contains('active')) openApplicant(applicantId);
+}
+
+/* Manual trigger — the person handling the contract confirms it's actually
+   ready before the applicant is invited to sign, with an optional note. */
+function sendSigningInvite(applicantId){
+  const a = applicants.find(x=>x.id===applicantId);
+  if(!a) return;
+  const customMessage = prompt(`Optional note to include in the signing invite to ${a.business} (leave blank for none):`, '');
+  if(customMessage === null) return; // cancelled
+  const entry = {date:today(), action:"Signing invite sent to applicant", actor: (currentEmployee && currentEmployee.email) || "Contract Manager"};
+  a.timeline.push(entry);
+  persistApplicantChange(a, entry);
+  logAudit(`Signing invite sent to ${a.business}`, (currentEmployee && currentEmployee.email) || "Contract Manager", customMessage || '');
+  toast("Signing invite queued", `${a.business} will be sent a signing invite.`);
+  triggerEmail('signing_invite', a.id, { customMessage: customMessage || undefined });
   if(document.getElementById('applicant-drawer').classList.contains('active')) openApplicant(applicantId);
 }
 
@@ -864,6 +883,7 @@ function submitApproval(isApprove){
       persistApplicantChange(a, entry);
       logAudit(`${a.business} advanced to ${pendingAction.nextStage}`, `${name} · ${role}`, comment);
       toast("Decision recorded", `${a.business} is now ${pendingAction.nextStage}.`);
+      if(pendingAction.nextStage === 'Preferred Bidder') triggerEmail('preferred_bidder', a.id);
     } else {
       const pool = REGRET_POOLS[a.status] || ["Did not proceed"];
       a.reason = pool[Math.floor(Math.random()*pool.length)];
@@ -873,6 +893,7 @@ function submitApproval(isApprove){
       persistApplicantChange(a, entry);
       logAudit(`${a.business} marked unsuccessful — ${a.reason}`, `${name} · ${role}`, comment);
       toast("Regret recorded", `${a.business} moved to Unsuccessful. Regret email queued for release.`);
+      triggerEmail('rejected', a.id);
     }
   }
   closeAll();
@@ -923,6 +944,51 @@ function renderComms(){
       <div class="subj">${c.subj}</div>
       <div class="bodytext">"${c.body}"</div>
     </div>`).join('');
+  renderEmailLog();
+}
+
+const EMAIL_STATUS_BADGE = {
+  sent: 'sage', skipped_not_configured: 'gold', failed: 'rust',
+};
+const EMAIL_STATUS_LABEL = {
+  sent: 'Sent', skipped_not_configured: 'Not sent — Resend not configured yet', failed: 'Failed',
+};
+let emailLogRows = [];
+async function renderEmailLog(){
+  const table = document.getElementById('email-log-table');
+  const statusEl = document.getElementById('email-log-status');
+  if(!table) return;
+  const { data, error } = await sb.from('rfq_email_log').select('*').order('created_at', {ascending:false}).limit(50);
+  if(error){ console.error('email log load failed', error); table.innerHTML = ''; return; }
+  emailLogRows = data || [];
+  if(statusEl){
+    const configured = emailLogRows.some(r=>r.status==='sent');
+    statusEl.textContent = configured
+      ? 'Every triggered email is logged here — real sending is active.'
+      : "Every triggered email is logged here. Resend isn't connected yet, so nothing is actually delivered — this shows exactly what would be sent once it is.";
+  }
+  table.innerHTML = `
+    <tr><th>When</th><th>Trigger</th><th>To</th><th>Subject</th><th>Status</th></tr>
+    ${emailLogRows.map((r,i)=>`<tr class="rowlink" onclick="showEmailLogDetail(${i})">
+      <td class="mono" style="font-size:11px;">${(r.created_at||'').replace('T',' ').slice(0,16)}</td>
+      <td>${escapeAttr(r.trigger_type)}</td>
+      <td>${escapeAttr(r.recipient_email||'—')}</td>
+      <td>${escapeAttr(r.subject||'—')}</td>
+      <td><span class="badge ${EMAIL_STATUS_BADGE[r.status]||'ink'}">${EMAIL_STATUS_LABEL[r.status]||r.status}</span></td>
+    </tr>`).join('') || `<tr><td colspan="5" style="text-align:center; color:var(--ink-3); padding:20px;">No emails triggered yet.</td></tr>`}
+  `;
+}
+function showEmailLogDetail(i){
+  const r = emailLogRows[i];
+  if(!r) return;
+  const lines = [
+    `To: ${r.recipient_email || '(none on file)'}`,
+    `Subject: ${r.subject || ''}`,
+    `Status: ${EMAIL_STATUS_LABEL[r.status] || r.status}${r.error_message ? ' — '+r.error_message : ''}`,
+    '',
+    r.body || '',
+  ];
+  alert(lines.join('\n'));
 }
 
 /* ============================================================
@@ -1061,7 +1127,9 @@ function submitApplication(){
       }
       console.error('application persist failed', message);
       toast("Not saved to database", `Reference ${a.id}: ${message || 'Unknown error'}`, 20000);
+      return;
     }
+    triggerEmail('application_received', a.id);
   });
 }
 
@@ -1192,6 +1260,23 @@ function can(perm){
    ============================================================ */
 /* supabase-js hides a failed Edge Function's actual response body behind a generic
    FunctionsHttpError — this pulls out the real message/debug info we sent back. */
+/* Fires a notification email via the send-notification-email function. Never
+   blocks the calling action on failure — email is best-effort, logged either
+   way (see rfq_email_log), and never breaks the actual workflow action. */
+function triggerEmail(trigger, applicantId, extra){
+  sb.functions.invoke('send-notification-email', {
+    body: { trigger, applicantId, triggeredBy: (currentEmployee && currentEmployee.email) || 'public', ...(extra||{}) }
+  }).then(({data, error})=>{
+    if(error || (data && data.error)){
+      console.error('email trigger failed', trigger, applicantId, error || (data && data.error));
+    } else if(data && data.status === 'sent'){
+      toast("Email sent", `Notification sent to the applicant.`);
+    } else if(data && data.status === 'skipped_not_configured'){
+      console.log('Email not sent (Resend not yet configured) — logged as:', data.subject);
+    }
+  }).catch(e=>console.error('email trigger failed', trigger, applicantId, e));
+}
+
 async function unwrapFunctionError(error, data){
   if(data && data.error) return { message: data.error, debug: data.debug };
   if(error && error.context && typeof error.context.json === 'function'){
