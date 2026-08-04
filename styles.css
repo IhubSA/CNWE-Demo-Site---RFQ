@@ -154,6 +154,22 @@
   .kcard.unsuccessful{border-left-color:var(--rust); opacity:0.75;}
   .kcard.awarded{border-left-color:var(--sage);}
 
+  /* Below ~768px (phones, small tablets): stages stack vertically full-width
+     instead of scrolling sideways through 15 narrow columns. */
+  @media (max-width: 768px){
+    .kanban-scroll{overflow-x:visible;}
+    .kanban{flex-direction:column; min-width:0; gap:4px;}
+    .kcol{width:100%;}
+    .kcol-head{
+      cursor:pointer; margin-bottom:0; padding:10px 4px; border-bottom:1px solid var(--line);
+      background:var(--paper-2); border-radius:var(--radius); align-items:center;
+    }
+    .kcol-head::after{content:'▾'; font-size:10px; color:var(--ink-3); margin-left:6px;}
+    .kcol.collapsed .kcol-head::after{content:'▸';}
+    .kcol-cards{padding-top:10px;}
+    .kcol.collapsed .kcol-cards{display:none;}
+  }
+
   /* ---------- drawer ---------- */
   .overlay{position:fixed; inset:0; background:rgba(27,42,58,0.35); display:none; z-index:50;}
   .overlay.active{display:block;}

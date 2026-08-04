@@ -9,9 +9,11 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.8.0",
-  date: "2026-08-03",
+  version: "2.10.0",
+  date: "2026-08-04",
   changelog: [
+    "2.10.0 (2026-08-04) — Applicant pipeline board now switches from horizontal-scrolling columns to a stacked vertical layout on phones/small tablets (under ~768px wide). Each stage can also be tapped to collapse/expand on mobile, so a long empty stage doesn't take up scroll space. Desktop is unchanged.",
+    "2.9.0 (2026-08-04) — RFQs past their closing date no longer appear on the public portal, enforced at three levels: the database itself now refuses to show expired RFQs to anonymous visitors, the submission function rejects any application to a closed RFQ even if someone bypasses the UI, and the form gives a clear 'this RFQ has closed' message if someone had it open right as the deadline passed.",
     "2.8.0 (2026-08-03) — Added the plumbing for automated emails: application confirmation, Preferred Bidder notification, Contract Drafted notification, a manual 'Send signing invite' button with an optional custom note, and rejection notices. All five are wired up and logged in a new Email Log (visible under Communications) whether or not real sending is connected yet — nothing sends for real until a Resend domain and API key are configured, so this is safe to test against live data in the meantime.",
     "2.7.1 (2026-08-03) — The POPIA privacy notice on the public Apply flow now shows every time someone applies, not just once per browser. (The admin sign-in POPIA notice is unchanged — still once per browser.)",
     "2.7.0 (2026-08-03) — Application submission now goes through a secure server-side function instead of a direct write from the browser, resolving a persistent, hard-to-pin-down permission error that kept recurring on that specific write path. As a side effect, this also removes direct public write access to the applicants/timeline/audit tables entirely, tightening security further. Submissions are now also checked server-side to confirm the RFQ is genuinely still open before accepting them.",
@@ -615,19 +617,23 @@ function renderApplicants(){
     const items = list.filter(a=>a.status===stage);
     const doneStage = ["Contract Signed","Onboarding","Closed"].includes(stage);
     return `<div class="kcol">
-      <div class="kcol-head"><span>${stage}</span><span>${items.length}</span></div>
-      ${items.map(a=>`<div class="kcard ${doneStage?'awarded':''}" onclick="openApplicant('${a.id}')">
-        <div class="biz">${a.business}</div>
-        <div class="ref mono">${a.id} · ${rfqTitle(a.rfq).split(' ').slice(0,3).join(' ')}…</div>
-      </div>`).join('')}
+      <div class="kcol-head" onclick="this.parentElement.classList.toggle('collapsed')"><span>${stage}</span><span>${items.length}</span></div>
+      <div class="kcol-cards">
+        ${items.map(a=>`<div class="kcard ${doneStage?'awarded':''}" onclick="openApplicant('${a.id}')">
+          <div class="biz">${a.business}</div>
+          <div class="ref mono">${a.id} · ${rfqTitle(a.rfq).split(' ').slice(0,3).join(' ')}…</div>
+        </div>`).join('')}
+      </div>
     </div>`;
   }).join('');
   const unsuccessful = list.filter(a=>a.status==="Unsuccessful");
   const unsCol = `<div class="kcol">
-    <div class="kcol-head"><span>Unsuccessful</span><span>${unsuccessful.length}</span></div>
-    ${unsuccessful.map(a=>`<div class="kcard unsuccessful" onclick="openApplicant('${a.id}')">
-      <div class="biz">${a.business}</div><div class="ref mono">${a.id}</div>
-    </div>`).join('')}
+    <div class="kcol-head" onclick="this.parentElement.classList.toggle('collapsed')"><span>Unsuccessful</span><span>${unsuccessful.length}</span></div>
+    <div class="kcol-cards">
+      ${unsuccessful.map(a=>`<div class="kcard unsuccessful" onclick="openApplicant('${a.id}')">
+        <div class="biz">${a.business}</div><div class="ref mono">${a.id}</div>
+      </div>`).join('')}
+    </div>
   </div>`;
   kanban.innerHTML = cols + unsCol;
 }
@@ -1014,7 +1020,11 @@ function exportAudit(){
    PUBLIC PORTAL
    ============================================================ */
 function renderPublic(){
-  const open = rfqs.filter(r=>r.status==="Open for Applications"||r.status==="Published");
+  const todayStr = today();
+  const open = rfqs.filter(r=>
+    (r.status==="Open for Applications"||r.status==="Published") &&
+    (!r.close || r.close >= todayStr)
+  );
   document.getElementById('public-rfq-list').innerHTML = open.length ? open.map(r=>`
     <div class="prfq-card">
       <h3>${r.title}</h3>
@@ -1096,6 +1106,13 @@ function submitApplication(){
   const phone = document.getElementById('apply-phone').value.trim();
   const comments = document.getElementById('apply-comments').value.trim();
 
+  const targetRfq = rfqs.find(r=>r.id===applyingTo);
+  if(targetRfq && targetRfq.close && targetRfq.close < today()){
+    toast("This RFQ has closed", `Applications for ${targetRfq.title} closed on ${targetRfq.close}.`, 20000);
+    closeAll();
+    renderPublic();
+    return;
+  }
   if(!business || !regNo || !name || !position || !email || !phone){
     toast("Missing details","Business name, company registration no., name, position, email and contact number are all required.");
     return;
