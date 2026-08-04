@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.11.0",
+  version: "2.12.0",
   date: "2026-08-04",
   changelog: [
+    "2.12.0 (2026-08-04) — Admins with Manage RFQs permission can now attach reference documents (specs, drawings, terms) to an RFQ when creating or editing it. These are publicly downloadable straight from the tender listing, no login or application required. Also added a 'Download tender information' button on each public listing, which generates a plain-text summary of the RFQ (budget, dates, description, required documents) for offline reference. Upload permissions verified directly against the database: an account with Manage RFQs can upload, one without it is rejected, and anonymous visitors can read/download but never write.",
     "2.11.0 (2026-08-04) — Draft RFQs can now be edited (title, budget, dates, description, required documents) before publishing. Split the old 'Manage RFQs' permission in two: Manage RFQs (create/edit Drafts) and a new Approve & Publish RFQs permission — someone can now be allowed to prepare tenders without being able to publish them, or vice versa. Enforced at the database level: tested directly that an edit-only account can change a Draft's details but is blocked from publishing, and a publish-only account can publish but is blocked from editing other fields.",
     "2.10.0 (2026-08-04) — Applicant pipeline board now switches from horizontal-scrolling columns to a stacked vertical layout on phones/small tablets (under ~768px wide). Each stage can also be tapped to collapse/expand on mobile, so a long empty stage doesn't take up scroll space. Desktop is unchanged.",
     "2.9.0 (2026-08-04) — RFQs past their closing date no longer appear on the public portal, enforced at three levels: the database itself now refuses to show expired RFQs to anonymous visitors, the submission function rejects any application to a closed RFQ even if someone bypasses the UI, and the form gives a clear 'this RFQ has closed' message if someone had it open right as the deadline passed.",
@@ -562,6 +563,7 @@ function openNewRfq(){
   document.getElementById('nr-save-btn').textContent = 'Save as Draft';
   document.getElementById('nr-modal-note').innerHTML = 'This record is created as <strong>Draft</strong>. Publishing requires sign-off from the Procurement Manager or delegated authority — recorded as a decision gate.';
   newRfqDocs = [docReq("CIPC company registration"), docReq("Valid tax clearance certificate")];
+  newRfqAttachments = [];
   document.getElementById('nr-title').value='';
   document.getElementById('nr-category').value='';
   document.getElementById('nr-budget').value='';
@@ -569,6 +571,7 @@ function openNewRfq(){
   document.getElementById('nr-close').value='';
   document.getElementById('nr-desc').value='';
   renderNrDocList();
+  renderNrAttachList();
   document.getElementById('modal-newrfq').classList.add('active'); document.getElementById('overlay').classList.add('active');
 }
 function openEditRfq(id){
@@ -580,6 +583,7 @@ function openEditRfq(id){
   document.getElementById('nr-save-btn').textContent = 'Save changes';
   document.getElementById('nr-modal-note').innerHTML = 'This RFQ is still a <strong>Draft</strong> — changes here are safe until it\'s published.';
   newRfqDocs = (r.requiredDocs||[]).map(d=>({...d}));
+  newRfqAttachments = (r.attachments||[]).map(f=>({...f, uploading:false}));
   document.getElementById('nr-title').value = r.title||'';
   document.getElementById('nr-category').value = r.category||'';
   document.getElementById('nr-budget').value = r.budget||'';
@@ -587,6 +591,7 @@ function openEditRfq(id){
   document.getElementById('nr-close').value = r.close||'';
   document.getElementById('nr-desc').value = r.desc||'';
   renderNrDocList();
+  renderNrAttachList();
   document.getElementById('modal-newrfq').classList.add('active'); document.getElementById('overlay').classList.add('active');
 }
 function renderNrDocList(){
@@ -609,9 +614,51 @@ function addDocRequirement(){
 }
 function removeDocRequirement(i){ newRfqDocs.splice(i,1); renderNrDocList(); }
 
+let newRfqAttachments = [];
+function renderNrAttachList(){
+  const el = document.getElementById('nr-attachlist');
+  if(!el) return;
+  el.innerHTML = newRfqAttachments.length ? newRfqAttachments.map((f,i)=>`
+    <div class="docreq-row">
+      <span>${f.uploading ? 'Uploading…' : `<a href="${f.url}" target="_blank" rel="noopener">${escapeAttr(f.name)}</a>`}</span>
+      <button type="button" class="rm" onclick="removeRfqAttachment(${i})" title="Remove">✕</button>
+    </div>`).join('') : `<div style="font-size:12px; color:var(--ink-3);">No tender documents attached yet.</div>`;
+}
+async function handleRfqAttachment(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  input.value = '';
+  const idx = newRfqAttachments.length;
+  newRfqAttachments.push({name:file.name, url:null, path:null, uploading:true});
+  renderNrAttachList();
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const path = `${editingRfqId||'new'}/${Date.now()}_${safeName}`;
+  try{
+    const { error: uploadErr } = await sb.storage.from('rfq-documents').upload(path, file, {upsert:false, contentType:file.type||'application/octet-stream'});
+    if(uploadErr) throw uploadErr;
+    const { data: urlData } = sb.storage.from('rfq-documents').getPublicUrl(path);
+    newRfqAttachments[idx].url = urlData.publicUrl;
+    newRfqAttachments[idx].path = path;
+    newRfqAttachments[idx].uploading = false;
+  } catch(e){
+    console.error('rfq document upload failed', e);
+    toast("Upload failed", `Could not upload ${file.name} — please try again.`);
+    newRfqAttachments.splice(idx,1);
+  }
+  renderNrAttachList();
+}
+function removeRfqAttachment(i){
+  const f = newRfqAttachments[i];
+  if(f && f.path) sb.storage.from('rfq-documents').remove([f.path]).then(({error})=>{ if(error) console.error('attachment delete failed', error); });
+  newRfqAttachments.splice(i,1);
+  renderNrAttachList();
+}
+
 function createRfq(){
   const title = document.getElementById('nr-title').value.trim();
   if(!title){ toast("Missing title","Give this RFQ a title before saving."); return; }
+  if(newRfqAttachments.some(f=>f.uploading)){ toast("Still uploading","Please wait for tender document uploads to finish before saving."); return; }
 
   if(editingRfqId){
     const r = rfqs.find(x=>x.id===editingRfqId);
@@ -623,11 +670,12 @@ function createRfq(){
     r.close = document.getElementById('nr-close').value||today(21);
     r.desc = document.getElementById('nr-desc').value||"";
     r.requiredDocs = newRfqDocs.slice();
+    r.attachments = newRfqAttachments.map(f=>({name:f.name, url:f.url, path:f.path}));
     renderRfqs();
     logAudit(`${r.id} edited (still Draft)`,"Procurement Manager");
     closeAll();
     toast("RFQ updated", `${r.id} has been saved.`);
-    sb.from('rfq_rfqs').update({title:r.title, category:r.category, budget:r.budget, open_date:r.open, close_date:r.close, description:r.desc, required_docs:r.requiredDocs}).eq('id', r.id)
+    sb.from('rfq_rfqs').update({title:r.title, category:r.category, budget:r.budget, open_date:r.open, close_date:r.close, description:r.desc, required_docs:r.requiredDocs, attachments:r.attachments||[]}).eq('id', r.id)
       .then(({error})=>{ if(error){ console.error('editRfq persist failed', error); toast("Not saved to database", "The change shows locally but failed to save to Supabase — check the console."); } });
     return;
   }
@@ -637,14 +685,15 @@ function createRfq(){
   const r = {id, title, category:document.getElementById('nr-category').value||"General",
     budget:Number(document.getElementById('nr-budget').value)||0, status:"Draft",
     open:document.getElementById('nr-open').value||today(), close:document.getElementById('nr-close').value||today(21),
-    desc:document.getElementById('nr-desc').value||"", requiredDocs:newRfqDocs.slice()};
+    desc:document.getElementById('nr-desc').value||"", requiredDocs:newRfqDocs.slice(),
+    attachments:newRfqAttachments.map(f=>({name:f.name, url:f.url, path:f.path}))};
   rfqs.unshift(r);
   populateRfqFilter();
   logAudit(`${id} created as Draft with ${newRfqDocs.length} required document(s)`,"Procurement Manager");
   closeAll();
   toast("RFQ saved", `${id} created as a Draft. Publishing requires sign-off.`);
   switchView('rfqs');
-  sb.from('rfq_rfqs').insert({id:r.id, title:r.title, category:r.category, status:r.status, budget:r.budget, open_date:r.open, close_date:r.close, description:r.desc, required_docs:r.requiredDocs})
+  sb.from('rfq_rfqs').insert({id:r.id, title:r.title, category:r.category, status:r.status, budget:r.budget, open_date:r.open, close_date:r.close, description:r.desc, required_docs:r.requiredDocs, attachments:r.attachments||[]})
     .then(({error})=>{ if(error){ console.error('createRfq persist failed', error); toast("Not saved to database", "The RFQ shows locally but failed to save to Supabase — check the console."); } });
 }
 
@@ -1077,8 +1126,42 @@ function renderPublic(){
       <h3>${r.title}</h3>
       <div class="meta">${r.id} · ${r.category} · Closes ${r.close}</div>
       <div class="desc">${r.desc}</div>
-      <button class="btn gold" onclick="handleApplyClick('${r.id}')">Apply now</button>
+      ${(r.attachments&&r.attachments.length) ? `
+        <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); margin-bottom:5px;">Tender documents</div>
+        <ul class="doclist-public" style="margin-bottom:14px;">
+          ${r.attachments.map(f=>`<li><span class="dot"></span><a href="${f.url}" target="_blank" rel="noopener" download>${escapeAttr(f.name)}</a></li>`).join('')}
+        </ul>` : ''}
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn gold" onclick="handleApplyClick('${r.id}')">Apply now</button>
+        <button class="btn secondary" onclick="downloadRfqInfo('${r.id}')">⬇ Download tender information</button>
+      </div>
     </div>`).join('') : `<div class="empty-state">No RFQs are currently open for applications.</div>`;
+}
+function downloadRfqInfo(rfqId){
+  const r = rfqs.find(x=>x.id===rfqId);
+  if(!r) return;
+  const lines = [
+    `${r.title}`,
+    `Reference: ${r.id}`,
+    `Category: ${r.category}`,
+    `Estimated budget: ${zar(r.budget)}`,
+    `Opens: ${r.open}`,
+    `Closes: ${r.close}`,
+    '',
+    'Scope summary:',
+    r.desc || '(none provided)',
+    '',
+    'Required documents to apply:',
+    ...(r.requiredDocs&&r.requiredDocs.length ? r.requiredDocs.map(d=>`  - ${d.name}${d.mandatory? ' (mandatory)':' (optional)'}`) : ['  (none specified)']),
+  ];
+  if(r.attachments && r.attachments.length){
+    lines.push('', 'Tender documents (see the public listing to download):');
+    r.attachments.forEach(f=>lines.push(`  - ${f.name}`));
+  }
+  const text = lines.join('\n');
+  const blob = new Blob([text], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=`${r.id}-tender-information.txt`; a.click();
 }
 let applyingTo = null;
 let applyDocState = [];
@@ -1275,7 +1358,7 @@ async function initPublicPage(){
 async function loadPublicData(){
   const { data, error } = await sb.from('rfq_rfqs').select('*').order('created_at', {ascending:true});
   if(error){ console.error('public rfq load failed', error); toast("Working offline", "Couldn't load open tenders — check your connection."); return; }
-  rfqs = (data||[]).map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:Number(r.budget), open:r.open_date, close:r.close_date, desc:r.description, requiredDocs:r.required_docs||[]}));
+  rfqs = (data||[]).map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:Number(r.budget), open:r.open_date, close:r.close_date, desc:r.description, requiredDocs:r.required_docs||[], attachments:r.attachments||[]}));
 }
 
 /* Signed-in admin bootstrap — full read access, seeds a genuinely empty database. */
@@ -1501,7 +1584,7 @@ function bumpUidCounterPastExisting(){
 }
 
 async function pushSeedToSupabase(){
-  const rfqRows = rfqs.map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:r.budget, open_date:r.open, close_date:r.close, description:r.desc, required_docs:r.requiredDocs||[]}));
+  const rfqRows = rfqs.map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:r.budget, open_date:r.open, close_date:r.close, description:r.desc, required_docs:r.requiredDocs||[], attachments:r.attachments||[]}));
   const { error: e1 } = await sb.from('rfq_rfqs').insert(rfqRows);
   if(e1) console.error('seed rfqs insert failed', e1);
 
@@ -1534,7 +1617,7 @@ async function loadFromSupabase(){
     (timelineByApplicant[t.applicant_id] = timelineByApplicant[t.applicant_id]||[]).push({date:t.event_date, action:t.action, actor:t.actor, note:t.note||''});
   });
 
-  rfqs = (rfqRes.data||[]).map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:Number(r.budget), open:r.open_date, close:r.close_date, desc:r.description, requiredDocs:r.required_docs||[]}));
+  rfqs = (rfqRes.data||[]).map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:Number(r.budget), open:r.open_date, close:r.close_date, desc:r.description, requiredDocs:r.required_docs||[], attachments:r.attachments||[]}));
   applicants = (appRes.data||[]).map(a=>({id:a.id, rfq:a.rfq_id, business:a.business, companyRegNo:a.company_reg_no, name:a.contact_name, position:a.position, email:a.email, phone:a.phone, comments:a.comments, status:a.status, received:a.received_date, reason:a.reason, documents:a.documents||[], timeline: timelineByApplicant[a.id] || []}));
   audit = (auditRes.data||[]).map(e=>({ts: (e.ts||'').replace('T',' ').slice(0,16), action:e.action, who:e.who, note:e.note||''}));
 }
