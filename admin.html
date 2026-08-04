@@ -250,7 +250,7 @@
 </div>
 
 <div class="modal" id="modal-newrfq">
-  <div class="modal-head"><h3>New RFQ record</h3><button class="drawer-close" style="position:static;" onclick="closeAll()">✕</button></div>
+  <div class="modal-head"><h3 id="nr-modal-title">New RFQ record</h3><button class="drawer-close" style="position:static;" onclick="closeAll()">✕</button></div>
   <div class="modal-body">
     <label>Title</label>
     <input type="text" id="nr-title" placeholder="e.g. Supply of office furniture — regional offices">
@@ -274,13 +274,13 @@
       <button type="button" class="btn secondary small" onclick="addDocRequirement()">Add</button>
     </div>
 
-    <div style="margin-top:14px; padding:10px 12px; background:var(--paper-2); border-radius:var(--radius); font-size:12px; color:var(--ink-2);">
+    <div style="margin-top:14px; padding:10px 12px; background:var(--paper-2); border-radius:var(--radius); font-size:12px; color:var(--ink-2);" id="nr-modal-note">
       This record is created as <strong>Draft</strong>. Publishing requires sign-off from the Procurement Manager or delegated authority — recorded as a decision gate.
     </div>
   </div>
   <div class="modal-foot">
     <button class="btn secondary" onclick="closeAll()">Cancel</button>
-    <button class="btn gold" onclick="createRfq()">Save as Draft</button>
+    <button class="btn gold" id="nr-save-btn" onclick="createRfq()">Save as Draft</button>
   </div>
 </div>
 
@@ -318,7 +318,8 @@
     <input type="text" id="emp-position" placeholder="e.g. Procurement Officer">
     <label>Permissions</label>
     <div style="display:flex; flex-direction:column; gap:8px; margin-top:6px; font-size:13px;">
-      <label style="display:flex; align-items:center; gap:8px; margin:0; font-weight:400;"><input type="checkbox" id="emp-perm-rfqs" style="width:auto;"> Manage RFQs — create and publish tenders</label>
+      <label style="display:flex; align-items:center; gap:8px; margin:0; font-weight:400;"><input type="checkbox" id="emp-perm-rfqs" style="width:auto;"> Manage RFQs — create and edit tenders (not publish)</label>
+      <label style="display:flex; align-items:center; gap:8px; margin:0; font-weight:400;"><input type="checkbox" id="emp-perm-publish" style="width:auto;"> Approve & Publish RFQs</label>
       <label style="display:flex; align-items:center; gap:8px; margin:0; font-weight:400;"><input type="checkbox" id="emp-perm-screen" style="width:auto;"> Screen & Validate Applicants</label>
       <label style="display:flex; align-items:center; gap:8px; margin:0; font-weight:400;"><input type="checkbox" id="emp-perm-evaluate" style="width:auto;"> Evaluate & Approve Applicants</label>
       <label style="display:flex; align-items:center; gap:8px; margin:0; font-weight:400;"><input type="checkbox" id="emp-perm-contracts" style="width:auto;"> Manage Contracts</label>

@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.10.0",
+  version: "2.11.0",
   date: "2026-08-04",
   changelog: [
+    "2.11.0 (2026-08-04) — Draft RFQs can now be edited (title, budget, dates, description, required documents) before publishing. Split the old 'Manage RFQs' permission in two: Manage RFQs (create/edit Drafts) and a new Approve & Publish RFQs permission — someone can now be allowed to prepare tenders without being able to publish them, or vice versa. Enforced at the database level: tested directly that an edit-only account can change a Draft's details but is blocked from publishing, and a publish-only account can publish but is blocked from editing other fields.",
     "2.10.0 (2026-08-04) — Applicant pipeline board now switches from horizontal-scrolling columns to a stacked vertical layout on phones/small tablets (under ~768px wide). Each stage can also be tapped to collapse/expand on mobile, so a long empty stage doesn't take up scroll space. Desktop is unchanged.",
     "2.9.0 (2026-08-04) — RFQs past their closing date no longer appear on the public portal, enforced at three levels: the database itself now refuses to show expired RFQs to anonymous visitors, the submission function rejects any application to a closed RFQ even if someone bypasses the UI, and the form gives a clear 'this RFQ has closed' message if someone had it open right as the deadline passed.",
     "2.8.0 (2026-08-03) — Added the plumbing for automated emails: application confirmation, Preferred Bidder notification, Contract Drafted notification, a manual 'Send signing invite' button with an optional custom note, and rejection notices. All five are wired up and logged in a new Email Log (visible under Communications) whether or not real sending is connected yet — nothing sends for real until a Resend domain and API key are configured, so this is safe to test against live data in the meantime.",
@@ -541,7 +542,10 @@ function renderRfqs(){
       <td class="ref mono">${r.id}</td><td>${r.title}</td><td>${r.category}</td><td class="mono">${zar(r.budget)}</td>
       <td><span class="badge ${rfqBadgeClass(r.status)}">${r.status}</span></td>
       <td class="mono">${r.open}</td><td class="mono">${r.close}</td>
-      <td>${r.status==="Draft" && can('can_manage_rfqs') ? `<button class="btn small gold" onclick="event.stopPropagation(); requestPublishRfq('${r.id}')">Publish</button>` : ''}</td></tr>`).join('')}
+      <td style="white-space:nowrap;">
+        ${r.status==="Draft" && can('can_manage_rfqs') ? `<button class="btn small secondary" onclick="event.stopPropagation(); openEditRfq('${r.id}')">Edit</button>` : ''}
+        ${r.status==="Draft" && can('can_publish_rfqs') ? `<button class="btn small gold" onclick="event.stopPropagation(); requestPublishRfq('${r.id}')">Publish</button>` : ''}
+      </td></tr>`).join('')}
   `;
 }
 function focusRfqInPipeline(id){
@@ -551,7 +555,12 @@ function focusRfqInPipeline(id){
 }
 
 let newRfqDocs = [];
+let editingRfqId = null;
 function openNewRfq(){
+  editingRfqId = null;
+  document.getElementById('nr-modal-title').textContent = 'New RFQ record';
+  document.getElementById('nr-save-btn').textContent = 'Save as Draft';
+  document.getElementById('nr-modal-note').innerHTML = 'This record is created as <strong>Draft</strong>. Publishing requires sign-off from the Procurement Manager or delegated authority — recorded as a decision gate.';
   newRfqDocs = [docReq("CIPC company registration"), docReq("Valid tax clearance certificate")];
   document.getElementById('nr-title').value='';
   document.getElementById('nr-category').value='';
@@ -559,6 +568,24 @@ function openNewRfq(){
   document.getElementById('nr-open').value='';
   document.getElementById('nr-close').value='';
   document.getElementById('nr-desc').value='';
+  renderNrDocList();
+  document.getElementById('modal-newrfq').classList.add('active'); document.getElementById('overlay').classList.add('active');
+}
+function openEditRfq(id){
+  const r = rfqs.find(x=>x.id===id);
+  if(!r) return;
+  if(r.status !== "Draft"){ toast("Can't edit", "Only Draft RFQs can be edited — this one has already been published."); return; }
+  editingRfqId = id;
+  document.getElementById('nr-modal-title').textContent = `Edit ${r.id}`;
+  document.getElementById('nr-save-btn').textContent = 'Save changes';
+  document.getElementById('nr-modal-note').innerHTML = 'This RFQ is still a <strong>Draft</strong> — changes here are safe until it\'s published.';
+  newRfqDocs = (r.requiredDocs||[]).map(d=>({...d}));
+  document.getElementById('nr-title').value = r.title||'';
+  document.getElementById('nr-category').value = r.category||'';
+  document.getElementById('nr-budget').value = r.budget||'';
+  document.getElementById('nr-open').value = r.open||'';
+  document.getElementById('nr-close').value = r.close||'';
+  document.getElementById('nr-desc').value = r.desc||'';
   renderNrDocList();
   document.getElementById('modal-newrfq').classList.add('active'); document.getElementById('overlay').classList.add('active');
 }
@@ -585,6 +612,26 @@ function removeDocRequirement(i){ newRfqDocs.splice(i,1); renderNrDocList(); }
 function createRfq(){
   const title = document.getElementById('nr-title').value.trim();
   if(!title){ toast("Missing title","Give this RFQ a title before saving."); return; }
+
+  if(editingRfqId){
+    const r = rfqs.find(x=>x.id===editingRfqId);
+    if(!r){ toast("Not found","Could not find that RFQ to update."); closeAll(); return; }
+    r.title = title;
+    r.category = document.getElementById('nr-category').value||"General";
+    r.budget = Number(document.getElementById('nr-budget').value)||0;
+    r.open = document.getElementById('nr-open').value||today();
+    r.close = document.getElementById('nr-close').value||today(21);
+    r.desc = document.getElementById('nr-desc').value||"";
+    r.requiredDocs = newRfqDocs.slice();
+    renderRfqs();
+    logAudit(`${r.id} edited (still Draft)`,"Procurement Manager");
+    closeAll();
+    toast("RFQ updated", `${r.id} has been saved.`);
+    sb.from('rfq_rfqs').update({title:r.title, category:r.category, budget:r.budget, open_date:r.open, close_date:r.close, description:r.desc, required_docs:r.requiredDocs}).eq('id', r.id)
+      .then(({error})=>{ if(error){ console.error('editRfq persist failed', error); toast("Not saved to database", "The change shows locally but failed to save to Supabase — check the console."); } });
+    return;
+  }
+
   uidCounter++;
   const id = "RFQ-2026-"+uidCounter;
   const r = {id, title, category:document.getElementById('nr-category').value||"General",
@@ -1307,6 +1354,7 @@ async function unwrapFunctionError(error, data){
 
 const PERM_LABELS = {
   can_manage_rfqs: 'Manage RFQs',
+  can_publish_rfqs: 'Approve & Publish RFQs',
   can_screen_validate: 'Screen & Validate',
   can_evaluate_approve: 'Evaluate & Approve',
   can_manage_contracts: 'Manage Contracts',
@@ -1336,7 +1384,7 @@ function openAddEmployee(){
   document.getElementById('emp-email').value = '';
   document.getElementById('emp-email').disabled = false;
   document.getElementById('emp-position').value = '';
-  ['rfqs','screen','evaluate','contracts','docs','audit'].forEach(k=>{ document.getElementById('emp-perm-'+k).checked = false; });
+  ['rfqs','publish','screen','evaluate','contracts','docs','audit'].forEach(k=>{ document.getElementById('emp-perm-'+k).checked = false; });
   document.getElementById('emp-remove-btn').style.display = 'none';
   document.getElementById('emp-save-btn').textContent = 'Send invite';
   document.getElementById('modal-employee').classList.add('active');
@@ -1352,6 +1400,7 @@ function openEditEmployee(id){
   document.getElementById('emp-email').disabled = true; // email can't change post-invite in this build
   document.getElementById('emp-position').value = e.position||'';
   document.getElementById('emp-perm-rfqs').checked = !!e.can_manage_rfqs;
+  document.getElementById('emp-perm-publish').checked = !!e.can_publish_rfqs;
   document.getElementById('emp-perm-screen').checked = !!e.can_screen_validate;
   document.getElementById('emp-perm-evaluate').checked = !!e.can_evaluate_approve;
   document.getElementById('emp-perm-contracts').checked = !!e.can_manage_contracts;
@@ -1365,6 +1414,7 @@ function openEditEmployee(id){
 function readPermsFromForm(){
   return {
     can_manage_rfqs: document.getElementById('emp-perm-rfqs').checked,
+    can_publish_rfqs: document.getElementById('emp-perm-publish').checked,
     can_screen_validate: document.getElementById('emp-perm-screen').checked,
     can_evaluate_approve: document.getElementById('emp-perm-evaluate').checked,
     can_manage_contracts: document.getElementById('emp-perm-contracts').checked,
