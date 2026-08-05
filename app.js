@@ -1,17 +1,18 @@
 /* ============================================================
    SUPABASE
    ============================================================ */
-const SUPABASE_URL = 'https://ziladpnlfajtiboavwvn.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppbGFkcG5sZmFqdGlib2F2d3ZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ4OTg3NTAsImV4cCI6MjEwMDQ3NDc1MH0.H7I4MPhRI0jP_0FoRp-pA0gqhKz_Q4QX7z732USXEcs';
+const SUPABASE_URL = 'https://fokopyjwxlssazaqrldi.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZva29weWp3eGxzc2F6YXFybGRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5MTMwMjQsImV4cCI6MjEwMTQ4OTAyNH0.u0QPghZQb9tUrGyQXOzFC5nhXY6p9MzW8cF0SXwTehY';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ============================================================
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.12.0",
-  date: "2026-08-04",
+  version: "2.13.0",
+  date: "2026-08-05",
   changelog: [
+    "2.13.0 (2026-08-05) — Migrated the entire backend to a dedicated Supabase project, no longer sharing infrastructure with other clients' data. Same database structure, same security rules, same login — all data (RFQs, applicants, timeline, audit trail) migrated and row-count verified to match exactly. All four server-side functions (employee management, document upload, application submission, email notifications) redeployed to the new project.",
     "2.12.0 (2026-08-04) — Admins with Manage RFQs permission can now attach reference documents (specs, drawings, terms) to an RFQ when creating or editing it. These are publicly downloadable straight from the tender listing, no login or application required. Also added a 'Download tender information' button on each public listing, which generates a plain-text summary of the RFQ (budget, dates, description, required documents) for offline reference. Upload permissions verified directly against the database: an account with Manage RFQs can upload, one without it is rejected, and anonymous visitors can read/download but never write.",
     "2.11.0 (2026-08-04) — Draft RFQs can now be edited (title, budget, dates, description, required documents) before publishing. Split the old 'Manage RFQs' permission in two: Manage RFQs (create/edit Drafts) and a new Approve & Publish RFQs permission — someone can now be allowed to prepare tenders without being able to publish them, or vice versa. Enforced at the database level: tested directly that an edit-only account can change a Draft's details but is blocked from publishing, and a publish-only account can publish but is blocked from editing other fields.",
     "2.10.0 (2026-08-04) — Applicant pipeline board now switches from horizontal-scrolling columns to a stacked vertical layout on phones/small tablets (under ~768px wide). Each stage can also be tapped to collapse/expand on mobile, so a long empty stage doesn't take up scroll space. Desktop is unchanged.",
