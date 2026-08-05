@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.18.0",
+  version: "2.18.1",
   date: "2026-08-05",
   changelog: [
+    "2.18.1 (2026-08-05) — Fixed a real layout bug on the new 'Set your password' screen: it was placed outside the main app container instead of inside it like the regular sign-in screen, which left a blank screen-height gap above the actual form, requiring a scroll to see it. It now appears immediately, no scrolling needed.",
     "2.18.0 (2026-08-05) — New employees must now set their own password the first time they sign in, replacing the admin-issued temporary one before they can access anything else. The old temporary password stops working the moment they do. Your own account is unaffected. Verified directly against the database that the self-service 'password changed' flag can only ever be cleared on a person's own account, never anyone else's.",
     "2.17.0 (2026-08-05) — Added real evaluation scoring, replacing what used to just be a status label. Fixed criteria (Price 30, Technical capability 25, Experience 20, B-BBEE/local contribution 15, Compliance 10 — 100 points total) scored by one evaluator per applicant, with an optional conflict-of-interest declaration. A new 'Scores & ranking' panel on the Approvals page ranks every evaluated applicant within their own RFQ from highest to lowest, so a recommendation points to a number rather than a preference. Scoring is gated behind the existing Evaluate & Approve permission — verified directly against the database, same as every other permission split in this system.",
     "2.16.0 (2026-08-05) — Added Requests for Clarification: any prospective bidder can ask a question about an open tender from the public portal, no login needed. A new Clarifications tab lets staff (Manage RFQs permission) answer each one either privately (only the asker sees it, by email) or publicly — publishing puts the Q&A on the public tender listing for every current and future bidder to see, and emails everyone who's already applied to that RFQ. Verified directly against the database: anonymous visitors can only ever see answered, published clarifications — never pending ones or private replies to someone else.",
