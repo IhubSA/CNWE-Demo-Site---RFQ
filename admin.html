@@ -28,7 +28,8 @@
       <div class="tab" data-view="approvals"><span class="num">04</span><span class="label">Approvals</span></div>
       <div class="tab" data-view="comms"><span class="num">05</span><span class="label">Communications</span></div>
       <div class="tab" data-view="audit"><span class="num">06</span><span class="label">Audit Trail</span></div>
-      <div class="tab" data-view="employees"><span class="num">07</span><span class="label">System Users &amp; Admin</span></div>
+      <div class="tab" data-view="clarifications"><span class="num">07</span><span class="label">Clarifications</span></div>
+      <div class="tab" data-view="employees"><span class="num">08</span><span class="label">System Users &amp; Admin</span></div>
     </nav>
     <div class="role-toggle">
       <a id="btn-public" href="index.html" target="_blank" rel="noopener" style="display:block; text-align:center; text-decoration:none;">View public portal ↗</a>
@@ -117,6 +118,23 @@
       <div class="panel">
         <div class="panel-body" style="padding:0;">
           <table id="rfq-table"></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- CLARIFICATIONS -->
+    <section class="view" id="view-clarifications">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">Q&amp;A</div>
+          <h1>Requests for clarification</h1>
+          <div class="desc">Questions from prospective bidders. Answer privately to just them, or publish so every current and future bidder on that tender sees the same information.</div>
+        </div>
+        <select id="clar-filter-rfq" onchange="renderClarifications()" style="width:auto; min-width:220px;"><option value="all">All RFQs</option></select>
+      </div>
+      <div class="panel">
+        <div class="panel-body" style="padding:0;">
+          <table id="clar-table"></table>
         </div>
       </div>
     </section>
@@ -297,6 +315,30 @@
   <div class="modal-foot">
     <button class="btn secondary" onclick="closeAll()">Cancel</button>
     <button class="btn gold" id="nr-save-btn" onclick="createRfq()">Save as Draft</button>
+  </div>
+</div>
+
+<div class="modal" id="modal-clarification-answer">
+  <div class="modal-head"><h3>Answer this question</h3><button class="drawer-close" style="position:static;" onclick="closeAll()">✕</button></div>
+  <div class="modal-body">
+    <div id="clar-answer-context" style="font-size:13px; color:var(--ink); margin-bottom:12px; padding:10px 12px; background:var(--paper-2); border-radius:var(--radius);"></div>
+    <label>Answer</label>
+    <textarea id="clar-answer-text" placeholder="Your response to this question" style="min-height:100px;"></textarea>
+    <label>Visibility</label>
+    <div style="display:flex; flex-direction:column; gap:8px; margin-top:4px; font-size:13px;">
+      <label style="display:flex; align-items:flex-start; gap:8px; margin:0; font-weight:400;">
+        <input type="radio" name="clar-visibility" id="clar-vis-private" value="private" checked style="width:auto; margin-top:3px;">
+        <span>Reply privately — only this bidder sees the answer</span>
+      </label>
+      <label style="display:flex; align-items:flex-start; gap:8px; margin:0; font-weight:400;">
+        <input type="radio" name="clar-visibility" id="clar-vis-public" value="public" style="width:auto; margin-top:3px;">
+        <span>Publish for all bidders — appears on the public tender listing, and every applicant who's already applied gets emailed</span>
+      </label>
+    </div>
+  </div>
+  <div class="modal-foot">
+    <button class="btn secondary" onclick="closeAll()">Cancel</button>
+    <button class="btn gold" onclick="submitClarificationAnswer()">Send answer</button>
   </div>
 </div>
 

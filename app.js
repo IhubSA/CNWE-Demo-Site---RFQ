@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.15.0",
+  version: "2.16.0",
   date: "2026-08-05",
   changelog: [
+    "2.16.0 (2026-08-05) — Added Requests for Clarification: any prospective bidder can ask a question about an open tender from the public portal, no login needed. A new Clarifications tab lets staff (Manage RFQs permission) answer each one either privately (only the asker sees it, by email) or publicly — publishing puts the Q&A on the public tender listing for every current and future bidder to see, and emails everyone who's already applied to that RFQ. Verified directly against the database: anonymous visitors can only ever see answered, published clarifications — never pending ones or private replies to someone else.",
     "2.15.0 (2026-08-05) — RFQs (beyond Draft) can now have a status change requested — Paused, Under Review, or Cancelled — with a reason. This doesn't take effect immediately: it needs a second sign-off from someone with Approve & Publish RFQs permission, who can approve or reject it with their own name, role, and comment. Rejected or approved, the RFQ stays in the register either way for audit purposes — nothing is ever hidden or removed. Also added filter dropdowns on the RFQ register (type, status, and a closing-date range), populated automatically from what's actually in the register. Verified the request/approve permission split directly against the database, the same way the Manage/Publish RFQs split was verified earlier.",
     "2.14.0 (2026-08-05) — Tender document storage switched from a public bucket to short-lived signed links (same protection already used for applicant-submitted documents). Anyone can still open a tender document from the public listing with no login, but there's no longer a permanent, indexable public URL — links are generated fresh and expire after 10 minutes. Applies to admin uploads, the public listing, and downloads.",
     "2.13.1 (2026-08-05) — 'Download tender information' now downloads the actual uploaded tender document(s) when they exist, instead of a generated text summary — the button label changes to match (e.g. 'Download tender document'). Falls back to the text summary only when no documents have been attached to that RFQ.",
@@ -241,6 +242,7 @@ function switchView(name){
   if(name==='comms') renderComms();
   if(name==='audit') renderAudit();
   if(name==='employees') renderEmployees();
+  if(name==='clarifications') renderClarifications();
 }
 document.querySelectorAll('#tabs .tab').forEach(t=>t.addEventListener('click',()=>switchView(t.dataset.view)));
 
@@ -1071,6 +1073,82 @@ function resolveRfqStatusRequest(isApprove){
   renderDashboard();
 }
 
+/* ============================================================
+   CLARIFICATIONS (Request for Clarification / Q&A)
+   ============================================================ */
+let clarifications = [];
+function triggerClarificationEmail(trigger, payload){
+  sb.functions.invoke('send-notification-email', {
+    body: { trigger, triggeredBy: (currentEmployee && currentEmployee.email) || 'system', ...payload }
+  }).then(({data, error})=>{
+    if(error || (data && data.error)) console.error('clarification email trigger failed', trigger, error || (data && data.error));
+  }).catch(e=>console.error('clarification email trigger failed', trigger, e));
+}
+async function renderClarifications(){
+  const filterSel = document.getElementById('clar-filter-rfq');
+  if(!filterSel) return;
+  const curFilter = filterSel.value || 'all';
+  filterSel.innerHTML = `<option value="all">All RFQs</option>` + rfqs.map(r=>`<option value="${r.id}">${r.id} — ${r.title}</option>`).join('');
+  if(rfqs.some(r=>r.id===curFilter)) filterSel.value = curFilter;
+
+  const { data, error } = await sb.from('rfq_clarifications').select('*').order('created_at', {ascending:false});
+  if(error){ console.error('clarifications load failed', error); return; }
+  clarifications = data || [];
+
+  const filter = filterSel.value || 'all';
+  const list = clarifications.filter(c=> filter==='all' || c.rfq_id===filter);
+  const table = document.getElementById('clar-table');
+  table.innerHTML = `
+    <tr><th>RFQ</th><th>Question</th><th>From</th><th>Status</th><th></th></tr>
+    ${list.map((c,i)=>`<tr>
+      <td class="ref mono">${escapeAttr(c.rfq_id)}</td>
+      <td style="max-width:320px;">${escapeAttr(c.question)}</td>
+      <td>${escapeAttr(c.asked_by_name)}${c.asked_by_business? ' · '+escapeAttr(c.asked_by_business):''}</td>
+      <td>${c.status==='answered'
+          ? `<span class="badge ${c.visibility==='public'?'sage':'ink'}">${c.visibility==='public'?'Published':'Answered privately'}</span>`
+          : `<span class="badge gold">Pending</span>`}</td>
+      <td>${c.status==='pending' && can('can_manage_rfqs') ? `<button class="btn small gold" onclick="openClarificationAnswer(${c.id})">Answer</button>` : ''}</td>
+    </tr>`).join('') || `<tr><td colspan="5" style="text-align:center; color:var(--ink-3); padding:20px;">No clarification requests yet.</td></tr>`}
+  `;
+}
+let clarAnswerId = null;
+function openClarificationAnswer(id){
+  const c = clarifications.find(x=>x.id===id);
+  if(!c) return;
+  clarAnswerId = id;
+  document.getElementById('clar-answer-context').innerHTML = `<strong>${escapeAttr(c.rfq_id)}</strong><br>From ${escapeAttr(c.asked_by_name)}${c.asked_by_business? ' ('+escapeAttr(c.asked_by_business)+')':''} — ${escapeAttr(c.asked_by_email)}<br><br>${escapeAttr(c.question)}`;
+  document.getElementById('clar-answer-text').value = '';
+  document.getElementById('clar-vis-private').checked = true;
+  document.getElementById('modal-clarification-answer').classList.add('active');
+  document.getElementById('overlay').classList.add('active');
+}
+async function submitClarificationAnswer(){
+  const c = clarifications.find(x=>x.id===clarAnswerId);
+  if(!c) return;
+  const answer = document.getElementById('clar-answer-text').value.trim();
+  if(!answer){ toast("Answer required", "Please write a response before sending."); return; }
+  const visibility = document.getElementById('clar-vis-public').checked ? 'public' : 'private';
+
+  const { error } = await sb.from('rfq_clarifications').update({
+    answer, status:'answered', visibility,
+    answered_by: (currentEmployee&&currentEmployee.email)||'Unknown',
+    answered_at: new Date().toISOString(),
+  }).eq('id', c.id);
+  if(error){ console.error('clarification answer persist failed', error); toast("Not saved", "Could not save this answer — check the console."); return; }
+
+  logAudit(`Clarification answered on ${c.rfq_id}${visibility==='public'?' — published for all bidders':' — replied privately'}`, (currentEmployee&&currentEmployee.email)||'Unknown', answer.slice(0,200));
+  closeAll();
+  toast("Answer sent", visibility==='public' ? "Published — visible to all bidders, and existing applicants are being notified." : "Sent privately to the bidder who asked.");
+  renderClarifications();
+
+  triggerClarificationEmail('clarification_answered', { recipientEmail:c.asked_by_email, recipientName:c.asked_by_name, rfqId:c.rfq_id, question:c.question, answer });
+
+  if(visibility==='public'){
+    const rfqApplicants = applicants.filter(a=>a.rfq===c.rfq_id);
+    rfqApplicants.forEach(a=>triggerEmail('clarification_published', a.id, { question:c.question, answer }));
+  }
+}
+
 function submitApproval(isApprove){
   const name = document.getElementById('ap-name').value.trim() || "Unnamed reviewer";
   const role = document.getElementById('ap-role').value.trim() || "Authorised reviewer";
@@ -1243,6 +1321,11 @@ async function renderPublic(){
     const { data, error } = await sb.storage.from('rfq-documents').createSignedUrl(f.path, 600);
     f._signedUrl = error ? null : data.signedUrl;
   })));
+  // Published Q&A — visible to everyone, no login, per RFQ.
+  const { data: clarData } = await sb.from('rfq_clarifications').select('rfq_id, question, answer').eq('status','answered').eq('visibility','public');
+  const clarByRfq = {};
+  (clarData||[]).forEach(c=>{ (clarByRfq[c.rfq_id] = clarByRfq[c.rfq_id]||[]).push(c); });
+
   document.getElementById('public-rfq-list').innerHTML = open.length ? open.map(r=>`
     <div class="prfq-card">
       <h3>${r.title}</h3>
@@ -1253,11 +1336,55 @@ async function renderPublic(){
         <ul class="doclist-public" style="margin-bottom:14px;">
           ${r.attachments.map(f=>f._signedUrl ? `<li><span class="dot"></span><a href="${f._signedUrl}" target="_blank" rel="noopener" download>${escapeAttr(f.name)}</a></li>` : '').join('')}
         </ul>` : ''}
+      ${(clarByRfq[r.id]&&clarByRfq[r.id].length) ? `
+        <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); margin-bottom:5px;">Published questions &amp; answers</div>
+        <div style="margin-bottom:14px;">
+          ${clarByRfq[r.id].map(c=>`
+            <div style="background:var(--paper-2); border-radius:var(--radius); padding:8px 10px; margin-bottom:6px;">
+              <div style="font-weight:600; font-size:12.5px;">Q: ${escapeAttr(c.question)}</div>
+              <div style="font-size:12.5px; margin-top:3px;">A: ${escapeAttr(c.answer)}</div>
+            </div>`).join('')}
+        </div>` : ''}
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn gold" onclick="handleApplyClick('${r.id}')">Apply now</button>
+        <button class="btn secondary" onclick="openAskQuestion('${r.id}')">❓ Ask a question</button>
         <button class="btn secondary" onclick="downloadRfqInfo('${r.id}')">⬇ ${(r.attachments&&r.attachments.length) ? (r.attachments.length>1?'Download tender documents':'Download tender document') : 'Download tender information'}</button>
       </div>
     </div>`).join('') : `<div class="empty-state">No RFQs are currently open for applications.</div>`;
+}
+let askQuestionRfqId = null;
+function openAskQuestion(rfqId){
+  const r = rfqs.find(x=>x.id===rfqId);
+  if(!r) return;
+  askQuestionRfqId = rfqId;
+  document.getElementById('aq-context').textContent = `Asking about ${r.id} — ${r.title}`;
+  document.getElementById('aq-business').value = '';
+  document.getElementById('aq-name').value = '';
+  document.getElementById('aq-email').value = '';
+  document.getElementById('aq-question').value = '';
+  document.getElementById('modal-ask-question').classList.add('active');
+  document.getElementById('overlay').classList.add('active');
+}
+function submitAskQuestion(){
+  const business = document.getElementById('aq-business').value.trim();
+  const name = document.getElementById('aq-name').value.trim();
+  const email = document.getElementById('aq-email').value.trim();
+  const question = document.getElementById('aq-question').value.trim();
+  if(!name || !email || !question){ toast("Missing details", "Name, email, and your question are all required."); return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ toast("Check the email address", "That doesn't look like a valid email address."); return; }
+  closeAll();
+  toast("Question sent", "The procurement team will respond to you by email.");
+  sb.functions.invoke('submit-clarification', { body: { rfqId: askQuestionRfqId, question, name, email, business: business||null } })
+    .then(async ({data, error})=>{
+      if(error || (data && data.error)){
+        let message = (data && data.error) || (error && error.message);
+        if(error && error.context && typeof error.context.json === 'function'){
+          try{ const b = await error.context.json(); message = b.error || message; } catch(e2){}
+        }
+        console.error('ask question failed', message);
+        toast("Couldn't send your question", message || "Please try again.", 20000);
+      }
+    });
 }
 async function downloadRfqInfo(rfqId){
   const r = rfqs.find(x=>x.id===rfqId);
@@ -1450,6 +1577,7 @@ async function initAdminPage(){
       renderApprovals();
       renderAudit();
       renderEmployees();
+      renderClarifications();
       applyPermissionUI();
       showAdmin();
     } else {

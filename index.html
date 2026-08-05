@@ -54,6 +54,28 @@
   </div>
 </div>
 
+<div class="modal" id="modal-ask-question">
+  <div class="modal-head"><h3>Ask a question</h3><button class="drawer-close" style="position:static;" onclick="closeAll()">✕</button></div>
+  <div class="modal-body">
+    <div id="aq-context" style="font-size:12.5px; color:var(--ink-3); margin-bottom:10px;"></div>
+    <label>Business name (optional)</label>
+    <input type="text" id="aq-business" placeholder="Your company">
+    <label>Your name</label>
+    <input type="text" id="aq-name" placeholder="Full name">
+    <label>Email address</label>
+    <input type="text" id="aq-email" placeholder="you@company.com">
+    <label>Your question</label>
+    <textarea id="aq-question" placeholder="What would you like to ask about this tender?" style="min-height:90px;"></textarea>
+    <div style="margin-top:10px; padding:10px 12px; background:var(--paper-2); border-radius:var(--radius); font-size:12px; color:var(--ink-2);">
+      Your question and its answer may be published for all bidders to see, without your personal details, if the procurement team decides it's relevant to everyone.
+    </div>
+  </div>
+  <div class="modal-foot">
+    <button class="btn secondary" onclick="closeAll()">Cancel</button>
+    <button class="btn gold" onclick="submitAskQuestion()">Send question</button>
+  </div>
+</div>
+
 <div class="modal" id="modal-popia-apply">
   <div class="modal-head"><h3>Your information is protected</h3><button class="drawer-close" style="position:static;" onclick="closeAll()">✕</button></div>
   <div class="modal-body" style="font-size:13px; color:var(--ink-2); line-height:1.6;">
