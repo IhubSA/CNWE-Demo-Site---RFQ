@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.13.1",
+  version: "2.14.0",
   date: "2026-08-05",
   changelog: [
+    "2.14.0 (2026-08-05) — Tender document storage switched from a public bucket to short-lived signed links (same protection already used for applicant-submitted documents). Anyone can still open a tender document from the public listing with no login, but there's no longer a permanent, indexable public URL — links are generated fresh and expire after 10 minutes. Applies to admin uploads, the public listing, and downloads.",
     "2.13.1 (2026-08-05) — 'Download tender information' now downloads the actual uploaded tender document(s) when they exist, instead of a generated text summary — the button label changes to match (e.g. 'Download tender document'). Falls back to the text summary only when no documents have been attached to that RFQ.",
     "2.13.0 (2026-08-05) — Migrated the entire backend to a dedicated Supabase project, no longer sharing infrastructure with other clients' data. Same database structure, same security rules, same login — all data (RFQs, applicants, timeline, audit trail) migrated and row-count verified to match exactly. All four server-side functions (employee management, document upload, application submission, email notifications) redeployed to the new project.",
     "2.12.0 (2026-08-04) — Admins with Manage RFQs permission can now attach reference documents (specs, drawings, terms) to an RFQ when creating or editing it. These are publicly downloadable straight from the tender listing, no login or application required. Also added a 'Download tender information' button on each public listing, which generates a plain-text summary of the RFQ (budget, dates, description, required documents) for offline reference. Upload permissions verified directly against the database: an account with Manage RFQs can upload, one without it is rejected, and anonymous visitors can read/download but never write.",
@@ -617,21 +618,31 @@ function addDocRequirement(){
 function removeDocRequirement(i){ newRfqDocs.splice(i,1); renderNrDocList(); }
 
 let newRfqAttachments = [];
-function renderNrAttachList(){
+async function renderNrAttachList(){
   const el = document.getElementById('nr-attachlist');
   if(!el) return;
-  el.innerHTML = newRfqAttachments.length ? newRfqAttachments.map((f,i)=>`
+  if(!newRfqAttachments.length){
+    el.innerHTML = `<div style="font-size:12px; color:var(--ink-3);">No tender documents attached yet.</div>`;
+    return;
+  }
+  // Fetch a fresh short-lived link for each saved attachment (not ones still mid-upload).
+  await Promise.all(newRfqAttachments.map(async f=>{
+    if(f.uploading || !f.path) return;
+    const { data, error } = await sb.storage.from('rfq-documents').createSignedUrl(f.path, 600);
+    f._previewUrl = error ? null : data.signedUrl;
+  }));
+  el.innerHTML = newRfqAttachments.map((f,i)=>`
     <div class="docreq-row">
-      <span>${f.uploading ? 'Uploading…' : `<a href="${f.url}" target="_blank" rel="noopener">${escapeAttr(f.name)}</a>`}</span>
+      <span>${f.uploading ? 'Uploading…' : (f._previewUrl ? `<a href="${f._previewUrl}" target="_blank" rel="noopener">${escapeAttr(f.name)}</a>` : escapeAttr(f.name))}</span>
       <button type="button" class="rm" onclick="removeRfqAttachment(${i})" title="Remove">✕</button>
-    </div>`).join('') : `<div style="font-size:12px; color:var(--ink-3);">No tender documents attached yet.</div>`;
+    </div>`).join('');
 }
 async function handleRfqAttachment(input){
   const file = input.files && input.files[0];
   if(!file) return;
   input.value = '';
   const idx = newRfqAttachments.length;
-  newRfqAttachments.push({name:file.name, url:null, path:null, uploading:true});
+  newRfqAttachments.push({name:file.name, path:null, uploading:true});
   renderNrAttachList();
 
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -639,8 +650,6 @@ async function handleRfqAttachment(input){
   try{
     const { error: uploadErr } = await sb.storage.from('rfq-documents').upload(path, file, {upsert:false, contentType:file.type||'application/octet-stream'});
     if(uploadErr) throw uploadErr;
-    const { data: urlData } = sb.storage.from('rfq-documents').getPublicUrl(path);
-    newRfqAttachments[idx].url = urlData.publicUrl;
     newRfqAttachments[idx].path = path;
     newRfqAttachments[idx].uploading = false;
   } catch(e){
@@ -672,7 +681,7 @@ function createRfq(){
     r.close = document.getElementById('nr-close').value||today(21);
     r.desc = document.getElementById('nr-desc').value||"";
     r.requiredDocs = newRfqDocs.slice();
-    r.attachments = newRfqAttachments.map(f=>({name:f.name, url:f.url, path:f.path}));
+    r.attachments = newRfqAttachments.map(f=>({name:f.name, path:f.path}));
     renderRfqs();
     logAudit(`${r.id} edited (still Draft)`,"Procurement Manager");
     closeAll();
@@ -688,7 +697,7 @@ function createRfq(){
     budget:Number(document.getElementById('nr-budget').value)||0, status:"Draft",
     open:document.getElementById('nr-open').value||today(), close:document.getElementById('nr-close').value||today(21),
     desc:document.getElementById('nr-desc').value||"", requiredDocs:newRfqDocs.slice(),
-    attachments:newRfqAttachments.map(f=>({name:f.name, url:f.url, path:f.path}))};
+    attachments:newRfqAttachments.map(f=>({name:f.name, path:f.path}))};
   rfqs.unshift(r);
   populateRfqFilter();
   logAudit(`${id} created as Draft with ${newRfqDocs.length} required document(s)`,"Procurement Manager");
@@ -1117,12 +1126,19 @@ function exportAudit(){
 /* ============================================================
    PUBLIC PORTAL
    ============================================================ */
-function renderPublic(){
+async function renderPublic(){
   const todayStr = today();
   const open = rfqs.filter(r=>
     (r.status==="Open for Applications"||r.status==="Published") &&
     (!r.close || r.close >= todayStr)
   );
+  // Tender documents live in a private bucket now — fetch a short-lived link
+  // for each one before rendering, rather than trusting a stored permanent URL.
+  await Promise.all(open.flatMap(r => (r.attachments||[]).map(async f=>{
+    if(!f.path) return;
+    const { data, error } = await sb.storage.from('rfq-documents').createSignedUrl(f.path, 600);
+    f._signedUrl = error ? null : data.signedUrl;
+  })));
   document.getElementById('public-rfq-list').innerHTML = open.length ? open.map(r=>`
     <div class="prfq-card">
       <h3>${r.title}</h3>
@@ -1131,7 +1147,7 @@ function renderPublic(){
       ${(r.attachments&&r.attachments.length) ? `
         <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); margin-bottom:5px;">Tender documents</div>
         <ul class="doclist-public" style="margin-bottom:14px;">
-          ${r.attachments.map(f=>`<li><span class="dot"></span><a href="${f.url}" target="_blank" rel="noopener" download>${escapeAttr(f.name)}</a></li>`).join('')}
+          ${r.attachments.map(f=>f._signedUrl ? `<li><span class="dot"></span><a href="${f._signedUrl}" target="_blank" rel="noopener" download>${escapeAttr(f.name)}</a></li>` : '').join('')}
         </ul>` : ''}
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn gold" onclick="handleApplyClick('${r.id}')">Apply now</button>
@@ -1139,17 +1155,20 @@ function renderPublic(){
       </div>
     </div>`).join('') : `<div class="empty-state">No RFQs are currently open for applications.</div>`;
 }
-function downloadRfqInfo(rfqId){
+async function downloadRfqInfo(rfqId){
   const r = rfqs.find(x=>x.id===rfqId);
   if(!r) return;
 
   if(r.attachments && r.attachments.length){
-    // Real tender documents exist — download those directly instead of a generated summary.
-    r.attachments.forEach(f=>{
+    // Real tender documents exist — fetch a fresh signed link right now and download those.
+    for(const f of r.attachments){
+      if(!f.path) continue;
+      const { data, error } = await sb.storage.from('rfq-documents').createSignedUrl(f.path, 600);
+      if(error){ console.error('signed url failed', error); toast("Couldn't open document", `${f.name} — please try again.`); continue; }
       const a = document.createElement('a');
-      a.href = f.url; a.download = f.name; a.target = '_blank'; a.rel = 'noopener';
+      a.href = data.signedUrl; a.download = f.name; a.target = '_blank'; a.rel = 'noopener';
       a.click();
-    });
+    }
     return;
   }
 
