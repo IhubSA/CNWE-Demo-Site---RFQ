@@ -164,6 +164,20 @@
         </div>
       </div>
       <div id="approvals-list"></div>
+
+      <div class="page-head" style="margin-top:8px;">
+        <div>
+          <div class="eyebrow">Evaluation</div>
+          <h1 style="font-size:20px;">Scores &amp; ranking</h1>
+          <div class="desc">Every applicant scored against the same fixed criteria, ranked highest to lowest, so a recommendation points to a number — not a preference.</div>
+        </div>
+        <select id="rank-filter-rfq" onchange="renderRankings()" style="width:auto; min-width:220px;"><option value="all">All RFQs</option></select>
+      </div>
+      <div class="panel">
+        <div class="panel-body" style="padding:0;">
+          <table id="rank-table"></table>
+        </div>
+      </div>
     </section>
 
     <!-- COMMUNICATIONS -->
@@ -270,6 +284,8 @@
     <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); margin:22px 0 4px 0;">Documents submitted</h3>
     <div id="ad-docs"></div>
 
+    <div id="ad-evaluation"></div>
+
     <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); margin:22px 0 4px 0;">Advance stage</h3>
     <div id="ad-actions" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;"></div>
 
@@ -315,6 +331,30 @@
   <div class="modal-foot">
     <button class="btn secondary" onclick="closeAll()">Cancel</button>
     <button class="btn gold" id="nr-save-btn" onclick="createRfq()">Save as Draft</button>
+  </div>
+</div>
+
+<div class="modal" id="modal-evaluation">
+  <div class="modal-head"><h3>Evaluate applicant</h3><button class="drawer-close" style="position:static;" onclick="closeAll()">✕</button></div>
+  <div class="modal-body">
+    <div id="eval-context" style="font-size:12.5px; color:var(--ink-3); margin-bottom:10px;"></div>
+    <div id="eval-criteria-list"></div>
+    <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-weight:600; font-size:13px;">Total score</span>
+      <span id="eval-total" class="mono" style="font-weight:600; font-size:16px;">0 / 100</span>
+    </div>
+    <label style="margin-top:14px; display:flex; align-items:center; gap:8px; font-weight:400;">
+      <input type="checkbox" id="eval-conflict" style="width:auto;" onchange="document.getElementById('eval-conflict-notes-wrap').style.display=this.checked?'block':'none';">
+      I declare a conflict of interest in evaluating this applicant
+    </label>
+    <div id="eval-conflict-notes-wrap" style="display:none; margin-top:8px;">
+      <label>Details</label>
+      <textarea id="eval-conflict-notes" placeholder="Describe the nature of the conflict"></textarea>
+    </div>
+  </div>
+  <div class="modal-foot">
+    <button class="btn secondary" onclick="closeAll()">Cancel</button>
+    <button class="btn gold" onclick="submitEvaluation()">Save evaluation</button>
   </div>
 </div>
 

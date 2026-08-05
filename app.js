@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.16.0",
+  version: "2.17.0",
   date: "2026-08-05",
   changelog: [
+    "2.17.0 (2026-08-05) — Added real evaluation scoring, replacing what used to just be a status label. Fixed criteria (Price 30, Technical capability 25, Experience 20, B-BBEE/local contribution 15, Compliance 10 — 100 points total) scored by one evaluator per applicant, with an optional conflict-of-interest declaration. A new 'Scores & ranking' panel on the Approvals page ranks every evaluated applicant within their own RFQ from highest to lowest, so a recommendation points to a number rather than a preference. Scoring is gated behind the existing Evaluate & Approve permission — verified directly against the database, same as every other permission split in this system.",
     "2.16.0 (2026-08-05) — Added Requests for Clarification: any prospective bidder can ask a question about an open tender from the public portal, no login needed. A new Clarifications tab lets staff (Manage RFQs permission) answer each one either privately (only the asker sees it, by email) or publicly — publishing puts the Q&A on the public tender listing for every current and future bidder to see, and emails everyone who's already applied to that RFQ. Verified directly against the database: anonymous visitors can only ever see answered, published clarifications — never pending ones or private replies to someone else.",
     "2.15.0 (2026-08-05) — RFQs (beyond Draft) can now have a status change requested — Paused, Under Review, or Cancelled — with a reason. This doesn't take effect immediately: it needs a second sign-off from someone with Approve & Publish RFQs permission, who can approve or reject it with their own name, role, and comment. Rejected or approved, the RFQ stays in the register either way for audit purposes — nothing is ever hidden or removed. Also added filter dropdowns on the RFQ register (type, status, and a closing-date range), populated automatically from what's actually in the register. Verified the request/approve permission split directly against the database, the same way the Manage/Publish RFQs split was verified earlier.",
     "2.14.0 (2026-08-05) — Tender document storage switched from a public bucket to short-lived signed links (same protection already used for applicant-submitted documents). Anyone can still open a tender document from the public listing with no login, but there's no longer a permanent, indexable public URL — links are generated fresh and expire after 10 minutes. Applies to admin uploads, the public listing, and downloads.",
@@ -67,6 +68,15 @@ const RFQ_STATUSES = ["Draft","Pending Internal Approval","Published","Open for 
 /* Applicant pipeline — mirrors the 17-step EPC Local Procurement Hub flow.
    Steps 1 (Publish) is RFQ-level; step 2+3 (Application+Receipt) are combined
    into "Application Received" since receipt is instantaneous. */
+/* Fixed evaluation criteria — same for every RFQ. Points sum to 100. */
+const EVALUATION_CRITERIA = [
+  { key: "price", label: "Price competitiveness", maxPoints: 30 },
+  { key: "technical", label: "Technical capability & quality of proposal", maxPoints: 25 },
+  { key: "experience", label: "Experience & track record", maxPoints: 20 },
+  { key: "bbbee", label: "B-BBEE / local economic contribution", maxPoints: 15 },
+  { key: "compliance", label: "Compliance & completeness of submission", maxPoints: 10 },
+];
+
 const KANBAN_STAGES = [
   "Application Received",       // 2+3 Application / Receipt
   "Under Screening",            // 4  Screening
@@ -238,7 +248,7 @@ function switchView(name){
   if(name==='dashboard') renderDashboard();
   if(name==='rfqs') renderRfqs();
   if(name==='applicants') renderApplicants();
-  if(name==='approvals') renderApprovals();
+  if(name==='approvals'){ renderApprovals(); renderRankings(); }
   if(name==='comms') renderComms();
   if(name==='audit') renderAudit();
   if(name==='employees') renderEmployees();
@@ -785,6 +795,94 @@ function renderApplicants(){
   kanban.innerHTML = cols + unsCol;
 }
 
+let currentApplicantEvaluation = null;
+function renderEvaluationSection(a){
+  const el = document.getElementById('ad-evaluation');
+  if(!el) return;
+  const reachedEvaluation = KANBAN_STAGES.indexOf(a.status) >= KANBAN_STAGES.indexOf("Under Evaluation");
+  const ev = currentApplicantEvaluation;
+
+  if(!ev && !reachedEvaluation){ el.innerHTML = ''; return; }
+
+  let html = `<h3 style="font-size:13px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); margin:22px 0 4px 0;">Evaluation</h3>`;
+
+  if(ev){
+    html += `
+      <div style="background:var(--paper-2); border-radius:var(--radius); padding:10px 12px; margin-bottom:8px;">
+        ${(ev.scores||[]).map(s=>`<div class="field-row"><span class="k">${escapeAttr(s.label)}</span><span class="mono">${s.score} / ${s.maxPoints}</span></div>`).join('')}
+        <div class="field-row" style="border-top:1px solid var(--line); margin-top:4px; padding-top:6px;"><span class="k" style="font-weight:600;">Total</span><span class="mono" style="font-weight:600;">${ev.total_score} / 100</span></div>
+        <div class="field-row"><span class="k">Evaluator</span><span>${escapeAttr(ev.evaluator)}</span></div>
+        <div class="field-row"><span class="k">Date</span><span class="mono">${(ev.evaluated_at||'').slice(0,10)}</span></div>
+        ${ev.conflict_declared ? `<div class="field-row"><span class="k">Conflict declared</span><span class="badge rust">Yes${ev.conflict_notes? ' — '+escapeAttr(ev.conflict_notes):''}</span></div>` : ''}
+      </div>
+      ${can('can_evaluate_approve') ? `<button class="btn small secondary" onclick="openEvaluationModal('${a.id}')">Re-evaluate</button>` : ''}
+    `;
+  } else {
+    html += can('can_evaluate_approve')
+      ? `<button class="btn small gold" onclick="openEvaluationModal('${a.id}')">Evaluate this applicant</button>`
+      : `<span style="font-size:12px; color:var(--ink-3);">Not yet evaluated. You don't have permission to score applicants.</span>`;
+  }
+  el.innerHTML = html;
+}
+let evaluatingApplicantId = null;
+function openEvaluationModal(applicantId){
+  const a = applicants.find(x=>x.id===applicantId);
+  if(!a) return;
+  evaluatingApplicantId = applicantId;
+  document.getElementById('eval-context').textContent = `${a.business} — ${a.id} — ${rfqTitle(a.rfq)}`;
+  const existing = currentApplicantEvaluation && currentApplicantEvaluation.applicant_id===applicantId ? currentApplicantEvaluation : null;
+  document.getElementById('eval-criteria-list').innerHTML = EVALUATION_CRITERIA.map(c=>{
+    const prior = existing ? (existing.scores||[]).find(s=>s.key===c.key) : null;
+    return `
+      <div style="margin-bottom:12px;">
+        <label style="display:flex; justify-content:space-between; margin-bottom:3px;"><span>${c.label}</span><span class="mono" style="font-weight:400; color:var(--ink-3);">out of ${c.maxPoints}</span></label>
+        <input type="number" class="eval-score-input" data-key="${c.key}" data-max="${c.maxPoints}" min="0" max="${c.maxPoints}" value="${prior?prior.score:0}" oninput="updateEvalTotal()">
+      </div>`;
+  }).join('');
+  document.getElementById('eval-conflict').checked = existing ? !!existing.conflict_declared : false;
+  document.getElementById('eval-conflict-notes').value = existing ? (existing.conflict_notes||'') : '';
+  document.getElementById('eval-conflict-notes-wrap').style.display = (existing && existing.conflict_declared) ? 'block' : 'none';
+  updateEvalTotal();
+  document.getElementById('modal-evaluation').classList.add('active');
+  document.getElementById('overlay').classList.add('active');
+}
+function updateEvalTotal(){
+  const inputs = [...document.querySelectorAll ? document.querySelectorAll('.eval-score-input') : []];
+  let total = 0;
+  inputs.forEach(inp=>{
+    let v = Math.max(0, Math.min(Number(inp.value)||0, Number(inp.dataset.max)));
+    inp.value = v;
+    total += v;
+  });
+  const totalEl = document.getElementById('eval-total');
+  if(totalEl) totalEl.textContent = `${total} / 100`;
+}
+async function submitEvaluation(){
+  const a = applicants.find(x=>x.id===evaluatingApplicantId);
+  if(!a) return;
+  const inputs = [...document.querySelectorAll('.eval-score-input')];
+  const scores = EVALUATION_CRITERIA.map(c=>{
+    const inp = inputs.find(i=>i.dataset.key===c.key);
+    const score = inp ? Math.max(0, Math.min(Number(inp.value)||0, c.maxPoints)) : 0;
+    return { key:c.key, label:c.label, maxPoints:c.maxPoints, score };
+  });
+  const total = scores.reduce((sum,s)=>sum+s.score, 0);
+  const conflictDeclared = document.getElementById('eval-conflict').checked;
+  const conflictNotes = document.getElementById('eval-conflict-notes').value.trim();
+  const evaluator = (currentEmployee && currentEmployee.email) || 'Unknown';
+
+  const payload = { applicant_id:a.id, scores, total_score:total, conflict_declared:conflictDeclared, conflict_notes:conflictNotes||null, evaluator, evaluated_at:new Date().toISOString() };
+  const { data, error } = await sb.from('rfq_evaluations').upsert(payload, {onConflict:'applicant_id'}).select().maybeSingle();
+  if(error){ console.error('evaluation save failed', error); toast("Not saved", "Could not save this evaluation — check the console."); return; }
+
+  currentApplicantEvaluation = data || payload;
+  logAudit(`${a.business} evaluated — total score ${total}/100`, evaluator, conflictDeclared? 'Conflict of interest declared':'');
+  closeAll();
+  toast("Evaluation saved", `${a.business} scored ${total}/100.`);
+  renderEvaluationSection(a);
+  renderRankings();
+}
+
 async function openApplicant(id){
   const a = applicants.find(x=>x.id===id);
   if(!a) return;
@@ -807,6 +905,11 @@ async function openApplicant(id){
   document.getElementById('applicant-drawer').classList.add('active');
   document.getElementById('overlay').classList.add('active');
   document.getElementById('ad-docs').innerHTML = docs.length ? `<div style="font-size:12px; color:var(--ink-3);">Loading document links…</div>` : `<div style="font-size:12px; color:var(--ink-3);">No document requirements were set on this RFQ.</div>`;
+
+  // Load this applicant's evaluation, if any, and render that section.
+  const { data: evalData } = await sb.from('rfq_evaluations').select('*').eq('applicant_id', a.id).maybeSingle();
+  currentApplicantEvaluation = evalData || null;
+  renderEvaluationSection(a);
 
   // Generate a short-lived signed URL for each uploaded document (bucket is private).
   const signedUrls = {};
@@ -1229,6 +1332,47 @@ function renderApprovals(){
     : `<div class="empty-state">Nothing is waiting on a decision-maker right now.</div>`;
 }
 
+async function renderRankings(){
+  const filterSel = document.getElementById('rank-filter-rfq');
+  if(!filterSel) return;
+  const curFilter = filterSel.value || 'all';
+  filterSel.innerHTML = `<option value="all">All RFQs</option>` + rfqs.map(r=>`<option value="${r.id}">${r.id} — ${r.title}</option>`).join('');
+  if(rfqs.some(r=>r.id===curFilter)) filterSel.value = curFilter;
+  const filter = filterSel.value || 'all';
+
+  const { data, error } = await sb.from('rfq_evaluations').select('*');
+  const table = document.getElementById('rank-table');
+  if(error){ console.error('rankings load failed', error); table.innerHTML = ''; return; }
+
+  const rows = (data||[]).map(ev=>{
+    const a = applicants.find(x=>x.id===ev.applicant_id);
+    return a ? { ev, a } : null;
+  }).filter(Boolean).filter(r => filter==='all' || r.a.rfq===filter);
+
+  // Group by RFQ, rank within each group — comparing across different tenders wouldn't mean anything.
+  const byRfq = {};
+  rows.forEach(r=>{ (byRfq[r.a.rfq] = byRfq[r.a.rfq]||[]).push(r); });
+  const rfqIds = Object.keys(byRfq).sort();
+
+  if(!rfqIds.length){
+    table.innerHTML = `<tr><td style="text-align:center; color:var(--ink-3); padding:20px;">No evaluations recorded yet${filter!=='all'? ' for this RFQ':''}.</td></tr>`;
+    return;
+  }
+
+  table.innerHTML = `<tr><th>Rank</th><th>RFQ</th><th>Applicant</th><th>Status</th><th>Score</th><th></th></tr>` +
+    rfqIds.map(rid=>{
+      const group = byRfq[rid].sort((x,y)=>y.ev.total_score - x.ev.total_score);
+      return group.map((r,i)=>`<tr class="rowlink" onclick="openApplicant('${r.a.id}')">
+        <td class="mono">${i===0? '🏆 1' : (i+1)}</td>
+        <td class="ref mono">${escapeAttr(rid)}</td>
+        <td>${escapeAttr(r.a.business)}</td>
+        <td><span class="badge ${appBadgeClass(r.a.status)}">${r.a.status}</span></td>
+        <td class="mono" style="font-weight:${i===0?'600':'400'};">${r.ev.total_score} / 100</td>
+        <td>${r.ev.conflict_declared? `<span class="badge rust">Conflict declared</span>` : ''}</td>
+      </tr>`).join('');
+    }).join('');
+}
+
 /* ============================================================
    COMMUNICATIONS
    ============================================================ */
@@ -1575,6 +1719,7 @@ async function initAdminPage(){
       renderRfqs();
       renderApplicants();
       renderApprovals();
+      renderRankings();
       renderAudit();
       renderEmployees();
       renderClarifications();
