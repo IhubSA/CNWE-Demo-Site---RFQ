@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.17.0",
+  version: "2.18.0",
   date: "2026-08-05",
   changelog: [
+    "2.18.0 (2026-08-05) — New employees must now set their own password the first time they sign in, replacing the admin-issued temporary one before they can access anything else. The old temporary password stops working the moment they do. Your own account is unaffected. Verified directly against the database that the self-service 'password changed' flag can only ever be cleared on a person's own account, never anyone else's.",
     "2.17.0 (2026-08-05) — Added real evaluation scoring, replacing what used to just be a status label. Fixed criteria (Price 30, Technical capability 25, Experience 20, B-BBEE/local contribution 15, Compliance 10 — 100 points total) scored by one evaluator per applicant, with an optional conflict-of-interest declaration. A new 'Scores & ranking' panel on the Approvals page ranks every evaluated applicant within their own RFQ from highest to lowest, so a recommendation points to a number rather than a preference. Scoring is gated behind the existing Evaluate & Approve permission — verified directly against the database, same as every other permission split in this system.",
     "2.16.0 (2026-08-05) — Added Requests for Clarification: any prospective bidder can ask a question about an open tender from the public portal, no login needed. A new Clarifications tab lets staff (Manage RFQs permission) answer each one either privately (only the asker sees it, by email) or publicly — publishing puts the Q&A on the public tender listing for every current and future bidder to see, and emails everyone who's already applied to that RFQ. Verified directly against the database: anonymous visitors can only ever see answered, published clarifications — never pending ones or private replies to someone else.",
     "2.15.0 (2026-08-05) — RFQs (beyond Draft) can now have a status change requested — Paused, Under Review, or Cancelled — with a reason. This doesn't take effect immediately: it needs a second sign-off from someone with Approve & Publish RFQs permission, who can approve or reject it with their own name, role, and comment. Rejected or approved, the RFQ stays in the register either way for audit purposes — nothing is ever hidden or removed. Also added filter dropdowns on the RFQ register (type, status, and a closing-date range), populated automatically from what's actually in the register. Verified the request/approve permission split directly against the database, the same way the Manage/Publish RFQs split was verified earlier.",
@@ -260,12 +261,16 @@ document.querySelectorAll('#tabs .tab').forEach(t=>t.addEventListener('click',()
 function showAdmin(){
   const loginView = document.getElementById('login-view');
   if(loginView) loginView.classList.remove('active');
+  const cpView = document.getElementById('change-password-view');
+  if(cpView) cpView.style.display = 'none';
   document.getElementById('sidebar').style.display='flex';
   document.getElementById('admin-main').style.display='block';
 }
 function showLogin(){
   document.getElementById('sidebar').style.display='none';
   document.getElementById('admin-main').style.display='none';
+  const cpView = document.getElementById('change-password-view');
+  if(cpView) cpView.style.display = 'none';
   document.getElementById('login-view').classList.add('active');
   const sidebarLogo = document.querySelector('.brand .logo-plate img');
   const loginLogo = document.getElementById('login-logo-slot');
@@ -273,6 +278,43 @@ function showLogin(){
   document.getElementById('login-error').style.display = 'none';
   document.getElementById('login-password').value = '';
 }
+function showChangePasswordGate(){
+  document.getElementById('sidebar').style.display='none';
+  document.getElementById('admin-main').style.display='none';
+  const loginView = document.getElementById('login-view');
+  if(loginView) loginView.classList.remove('active');
+  const cpView = document.getElementById('change-password-view');
+  cpView.style.display = 'flex';
+  const sidebarLogo = document.querySelector('.brand .logo-plate img');
+  const cpLogo = document.getElementById('cp-logo-slot');
+  if(sidebarLogo && cpLogo) cpLogo.src = sidebarLogo.src;
+  document.getElementById('cp-error').style.display = 'none';
+  document.getElementById('cp-password').value = '';
+  document.getElementById('cp-password-confirm').value = '';
+}
+async function submitPasswordChange(){
+  const pw = document.getElementById('cp-password').value;
+  const pw2 = document.getElementById('cp-password-confirm').value;
+  const errEl = document.getElementById('cp-error');
+  const btn = document.getElementById('cp-submit-btn');
+  if(!pw || pw.length < 8){ errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display='block'; return; }
+  if(pw !== pw2){ errEl.textContent = "Passwords don't match."; errEl.style.display='block'; return; }
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const { error: updateErr } = await sb.auth.updateUser({ password: pw });
+  if(updateErr){
+    btn.disabled = false; btn.textContent = 'Set password and continue';
+    errEl.textContent = updateErr.message || 'Could not update your password — please try again.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const { error: rpcErr } = await sb.rpc('mark_password_changed');
+  if(rpcErr) console.error('mark_password_changed failed', rpcErr); // not fatal — the password itself is already changed
+  if(currentEmployee) currentEmployee.must_change_password = false;
+  btn.disabled = false; btn.textContent = 'Set password and continue';
+  toast("Password set", "You're all set — welcome in.");
+  showAdmin();
+}
+
 
 /* ============================================================
    POPIA NOTICE — shown once per browser before applying or signing in.
@@ -326,7 +368,11 @@ async function handleLoginSubmit(){
   await loadAdminData();
   populateRfqFilter();
   renderDashboard(); renderRfqs(); renderApplicants(); renderApprovals(); renderAudit();
-  showAdmin();
+  if(currentEmployee && currentEmployee.must_change_password){
+    showChangePasswordGate();
+  } else {
+    showAdmin();
+  }
 }
 
 const btnSignout = document.getElementById('btn-signout');
@@ -1724,7 +1770,11 @@ async function initAdminPage(){
       renderEmployees();
       renderClarifications();
       applyPermissionUI();
-      showAdmin();
+      if(currentEmployee && currentEmployee.must_change_password){
+        showChangePasswordGate();
+      } else {
+        showAdmin();
+      }
     } else {
       showLogin();
     }

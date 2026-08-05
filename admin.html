@@ -257,6 +257,20 @@
   </div>
 </div>
 
+<div id="change-password-view" style="display:none; width:100%; min-height:100vh; align-items:center; justify-content:center; background:#0E1826;">
+  <div class="login-card">
+    <div class="logo-plate" style="margin-bottom:14px;"><img src="" alt="" id="cp-logo-slot"></div>
+    <h2 class="serif" style="margin:0 0 4px 0; font-size:20px; color:#fff;">Set your password</h2>
+    <div style="font-size:12.5px; color:#8CA0BC; margin-bottom:18px;">This is your first time signing in. Choose a password only you know before continuing — the temporary one you were given won't work again after this.</div>
+    <label style="color:#C9D2DB;">New password</label>
+    <input type="password" id="cp-password" placeholder="At least 8 characters" autocomplete="new-password">
+    <label style="color:#C9D2DB;">Confirm new password</label>
+    <input type="password" id="cp-password-confirm" placeholder="Re-enter the same password" autocomplete="new-password">
+    <div id="cp-error" style="display:none; color:#F87171; font-size:12px; margin-top:10px;"></div>
+    <button class="btn gold" id="cp-submit-btn" style="width:100%; margin-top:16px;" onclick="submitPasswordChange()">Set password and continue</button>
+  </div>
+</div>
+
 <div class="overlay" id="overlay" onclick="closeAll()"></div>
 
 <div class="modal" id="modal-popia-signin">
