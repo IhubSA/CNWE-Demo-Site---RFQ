@@ -103,6 +103,17 @@
         </div>
         <button class="btn gold" onclick="openNewRfq()">+ New RFQ</button>
       </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+        <select id="rfq-filter-category" onchange="renderRfqs()" style="width:auto; min-width:160px;"><option value="all">All types</option></select>
+        <select id="rfq-filter-status" onchange="renderRfqs()" style="width:auto; min-width:160px;"><option value="all">All statuses</option></select>
+        <label style="display:flex; align-items:center; gap:6px; margin:0; font-weight:400; font-size:12.5px; color:var(--ink-2);">Closes after
+          <input type="date" id="rfq-filter-date-from" onchange="renderRfqs()" style="width:auto;">
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; margin:0; font-weight:400; font-size:12.5px; color:var(--ink-2);">Closes before
+          <input type="date" id="rfq-filter-date-to" onchange="renderRfqs()" style="width:auto;">
+        </label>
+        <button class="btn secondary small" onclick="clearRfqFilters()">Clear filters</button>
+      </div>
       <div class="panel">
         <div class="panel-body" style="padding:0;">
           <table id="rfq-table"></table>
@@ -286,6 +297,46 @@
   <div class="modal-foot">
     <button class="btn secondary" onclick="closeAll()">Cancel</button>
     <button class="btn gold" id="nr-save-btn" onclick="createRfq()">Save as Draft</button>
+  </div>
+</div>
+
+<div class="modal" id="modal-rfq-status-request">
+  <div class="modal-head"><h3>Request a status change</h3><button class="drawer-close" style="position:static;" onclick="closeAll()">✕</button></div>
+  <div class="modal-body">
+    <div id="rsr-context" style="font-size:12.5px; color:var(--ink-3); margin-bottom:10px;"></div>
+    <label>New status</label>
+    <select id="rsr-target">
+      <option value="Paused">Paused</option>
+      <option value="Under Review">Under Review</option>
+      <option value="Cancelled">Cancelled</option>
+    </select>
+    <label>Reason</label>
+    <textarea id="rsr-reason" placeholder="Why is this status change being requested?"></textarea>
+    <div style="margin-top:12px; padding:10px 12px; background:var(--paper-2); border-radius:var(--radius); font-size:12px; color:var(--ink-2);">
+      This doesn't take effect immediately — it needs to be reviewed and approved by someone with Approve & Publish RFQs permission.
+    </div>
+  </div>
+  <div class="modal-foot">
+    <button class="btn secondary" onclick="closeAll()">Cancel</button>
+    <button class="btn gold" onclick="submitRfqStatusRequest()">Submit for review</button>
+  </div>
+</div>
+
+<div class="modal" id="modal-rfq-status-review">
+  <div class="modal-head"><h3>Review status change request</h3><button class="drawer-close" style="position:static;" onclick="closeAll()">✕</button></div>
+  <div class="modal-body">
+    <div id="rsv-context" style="font-size:13px; color:var(--ink); margin-bottom:12px;"></div>
+    <label>Your name</label>
+    <input type="text" id="rsv-name" placeholder="Full name">
+    <label>Role</label>
+    <input type="text" id="rsv-role" placeholder="e.g. Procurement Manager">
+    <label>Comment (optional)</label>
+    <textarea id="rsv-comment" placeholder="Any notes on this decision"></textarea>
+  </div>
+  <div class="modal-foot">
+    <button class="btn secondary" onclick="closeAll()">Cancel</button>
+    <button class="btn danger" onclick="resolveRfqStatusRequest(false)">Reject</button>
+    <button class="btn gold" onclick="resolveRfqStatusRequest(true)">Approve</button>
   </div>
 </div>
 

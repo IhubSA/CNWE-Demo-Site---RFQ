@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.14.0",
+  version: "2.15.0",
   date: "2026-08-05",
   changelog: [
+    "2.15.0 (2026-08-05) — RFQs (beyond Draft) can now have a status change requested — Paused, Under Review, or Cancelled — with a reason. This doesn't take effect immediately: it needs a second sign-off from someone with Approve & Publish RFQs permission, who can approve or reject it with their own name, role, and comment. Rejected or approved, the RFQ stays in the register either way for audit purposes — nothing is ever hidden or removed. Also added filter dropdowns on the RFQ register (type, status, and a closing-date range), populated automatically from what's actually in the register. Verified the request/approve permission split directly against the database, the same way the Manage/Publish RFQs split was verified earlier.",
     "2.14.0 (2026-08-05) — Tender document storage switched from a public bucket to short-lived signed links (same protection already used for applicant-submitted documents). Anyone can still open a tender document from the public listing with no login, but there's no longer a permanent, indexable public URL — links are generated fresh and expire after 10 minutes. Applies to admin uploads, the public listing, and downloads.",
     "2.13.1 (2026-08-05) — 'Download tender information' now downloads the actual uploaded tender document(s) when they exist, instead of a generated text summary — the button label changes to match (e.g. 'Download tender document'). Falls back to the text summary only when no documents have been attached to that RFQ.",
     "2.13.0 (2026-08-05) — Migrated the entire backend to a dedicated Supabase project, no longer sharing infrastructure with other clients' data. Same database structure, same security rules, same login — all data (RFQs, applicants, timeline, audit trail) migrated and row-count verified to match exactly. All four server-side functions (employee management, document upload, application submission, email notifications) redeployed to the new project.",
@@ -60,7 +61,7 @@ const VERSION_INFO = {
 /* ============================================================
    STATE
    ============================================================ */
-const RFQ_STATUSES = ["Draft","Pending Internal Approval","Published","Open for Applications","Applications Closed","Screening in Progress","Validation in Progress","Proposal Stage Open","Evaluation in Progress","Approval Pending","Contracting","Awarded","Cancelled","Closed"];
+const RFQ_STATUSES = ["Draft","Pending Internal Approval","Published","Open for Applications","Applications Closed","Screening in Progress","Validation in Progress","Proposal Stage Open","Evaluation in Progress","Approval Pending","Contracting","Awarded","Paused","Under Review","Cancelled","Closed"];
 
 /* Applicant pipeline — mirrors the 17-step EPC Local Procurement Hub flow.
    Steps 1 (Publish) is RFQ-level; step 2+3 (Application+Receipt) are combined
@@ -375,6 +376,7 @@ function rfqBadgeClass(s){
   if(["Awarded","Contract Signed","Closed"].includes(s)) return "sage";
   if(["Cancelled"].includes(s)) return "rust";
   if(["Draft","Pending Internal Approval"].includes(s)) return "ink";
+  if(["Paused","Under Review"].includes(s)) return "gold";
   return "gold";
 }
 function appBadgeClass(s){
@@ -539,17 +541,53 @@ function renderDashboard(){
 /* ============================================================
    RFQs
    ============================================================ */
+function populateRfqCategoryStatusFilters(){
+  const catSel = document.getElementById('rfq-filter-category');
+  const statSel = document.getElementById('rfq-filter-status');
+  if(!catSel || !statSel) return;
+  const curCat = catSel.value || 'all';
+  const curStat = statSel.value || 'all';
+  const cats = [...new Set(rfqs.map(r=>r.category).filter(Boolean))].sort();
+  const stats = [...new Set(rfqs.map(r=>r.status).filter(Boolean))].sort();
+  catSel.innerHTML = `<option value="all">All types</option>` + cats.map(c=>`<option value="${escapeAttr(c)}">${escapeAttr(c)}</option>`).join('');
+  statSel.innerHTML = `<option value="all">All statuses</option>` + stats.map(s=>`<option value="${escapeAttr(s)}">${escapeAttr(s)}</option>`).join('');
+  if(cats.includes(curCat)) catSel.value = curCat;
+  if(stats.includes(curStat)) statSel.value = curStat;
+}
+function clearRfqFilters(){
+  document.getElementById('rfq-filter-category').value = 'all';
+  document.getElementById('rfq-filter-status').value = 'all';
+  document.getElementById('rfq-filter-date-from').value = '';
+  document.getElementById('rfq-filter-date-to').value = '';
+  renderRfqs();
+}
 function renderRfqs(){
+  populateRfqCategoryStatusFilters();
+  const cat = document.getElementById('rfq-filter-category').value || 'all';
+  const stat = document.getElementById('rfq-filter-status').value || 'all';
+  const dateFrom = document.getElementById('rfq-filter-date-from').value;
+  const dateTo = document.getElementById('rfq-filter-date-to').value;
+  const filtered = rfqs.filter(r=>
+    (cat==='all' || r.category===cat) &&
+    (stat==='all' || r.status===stat) &&
+    (!dateFrom || !r.close || r.close >= dateFrom) &&
+    (!dateTo || !r.close || r.close <= dateTo)
+  );
   document.getElementById('rfq-table').innerHTML = `
     <tr><th>Reference</th><th>Title</th><th>Category</th><th>Budget</th><th>Status</th><th>Opens</th><th>Closes</th><th></th></tr>
-    ${rfqs.map(r=>`<tr class="rowlink" onclick="focusRfqInPipeline('${r.id}')">
+    ${filtered.map(r=>`<tr class="rowlink" onclick="focusRfqInPipeline('${r.id}')">
       <td class="ref mono">${r.id}</td><td>${r.title}</td><td>${r.category}</td><td class="mono">${zar(r.budget)}</td>
-      <td><span class="badge ${rfqBadgeClass(r.status)}">${r.status}</span></td>
+      <td>
+        <span class="badge ${rfqBadgeClass(r.status)}">${r.status}</span>
+        ${r.pendingStatusChange ? `<div style="font-size:10.5px; color:var(--ink-3); margin-top:3px;">⏳ Pending: ${escapeAttr(r.pendingStatusChange.targetStatus)}</div>` : ''}
+      </td>
       <td class="mono">${r.open}</td><td class="mono">${r.close}</td>
       <td style="white-space:nowrap;">
         ${r.status==="Draft" && can('can_manage_rfqs') ? `<button class="btn small secondary" onclick="event.stopPropagation(); openEditRfq('${r.id}')">Edit</button>` : ''}
         ${r.status==="Draft" && can('can_publish_rfqs') ? `<button class="btn small gold" onclick="event.stopPropagation(); requestPublishRfq('${r.id}')">Publish</button>` : ''}
-      </td></tr>`).join('')}
+        ${r.pendingStatusChange && can('can_publish_rfqs') ? `<button class="btn small gold" onclick="event.stopPropagation(); openRfqStatusReview('${r.id}')">Review</button>` : ''}
+        ${!r.pendingStatusChange && r.status!=="Draft" && can('can_manage_rfqs') ? `<button class="btn small secondary" onclick="event.stopPropagation(); openRfqStatusRequest('${r.id}')">Change status</button>` : ''}
+      </td></tr>`).join('') || `<tr><td colspan="8" style="text-align:center; color:var(--ink-3); padding:20px;">No RFQs match these filters.</td></tr>`}
   `;
 }
 function focusRfqInPipeline(id){
@@ -965,6 +1003,72 @@ function requestPublishRfq(rfqId){
   document.getElementById('ap-reject-btn').style.display = 'none';
   document.getElementById('modal-approval').classList.add('active');
   document.getElementById('overlay').classList.add('active');
+}
+
+let rfqStatusRequestId = null;
+function openRfqStatusRequest(rfqId){
+  const r = rfqs.find(x=>x.id===rfqId);
+  if(!r) return;
+  rfqStatusRequestId = rfqId;
+  document.getElementById('rsr-context').textContent = `${r.id} — ${r.title} (currently ${r.status})`;
+  document.getElementById('rsr-target').value = 'Paused';
+  document.getElementById('rsr-reason').value = '';
+  document.getElementById('modal-rfq-status-request').classList.add('active');
+  document.getElementById('overlay').classList.add('active');
+}
+function submitRfqStatusRequest(){
+  const r = rfqs.find(x=>x.id===rfqStatusRequestId);
+  if(!r) return;
+  const targetStatus = document.getElementById('rsr-target').value;
+  const reason = document.getElementById('rsr-reason').value.trim();
+  if(!reason){ toast("Reason required", "Please explain why this status change is being requested."); return; }
+  r.pendingStatusChange = { targetStatus, reason, requestedBy: (currentEmployee&&currentEmployee.email)||'Unknown', requestedAt: new Date().toISOString() };
+  logAudit(`${r.id} — status change requested: ${targetStatus}`, (currentEmployee&&currentEmployee.email)||'Unknown', reason);
+  closeAll();
+  renderRfqs();
+  toast("Submitted for review", `${r.id}'s status change now needs approval before it takes effect.`);
+  sb.from('rfq_rfqs').update({pending_status_change:r.pendingStatusChange}).eq('id', r.id)
+    .then(({error})=>{ if(error){ console.error('rfq status request persist failed', error); toast("Not saved to database", "The request shows locally but failed to save — check the console."); } });
+}
+
+let rfqStatusReviewId = null;
+function openRfqStatusReview(rfqId){
+  const r = rfqs.find(x=>x.id===rfqId);
+  if(!r || !r.pendingStatusChange) return;
+  rfqStatusReviewId = rfqId;
+  const p = r.pendingStatusChange;
+  document.getElementById('rsv-context').innerHTML = `<strong>${r.id} — ${r.title}</strong><br>Current status: ${r.status} → Requested: <strong>${escapeAttr(p.targetStatus)}</strong><br>Requested by ${escapeAttr(p.requestedBy)}<br><br>Reason: ${escapeAttr(p.reason)}`;
+  document.getElementById('rsv-name').value = '';
+  document.getElementById('rsv-role').value = '';
+  document.getElementById('rsv-comment').value = '';
+  document.getElementById('modal-rfq-status-review').classList.add('active');
+  document.getElementById('overlay').classList.add('active');
+}
+function resolveRfqStatusRequest(isApprove){
+  const r = rfqs.find(x=>x.id===rfqStatusReviewId);
+  if(!r || !r.pendingStatusChange) return;
+  const name = document.getElementById('rsv-name').value.trim() || "Unnamed reviewer";
+  const role = document.getElementById('rsv-role').value.trim() || "Authorised reviewer";
+  const comment = document.getElementById('rsv-comment').value.trim();
+  const p = r.pendingStatusChange;
+
+  if(isApprove){
+    r.status = p.targetStatus;
+    r.pendingStatusChange = null;
+    logAudit(`${r.id} status changed to ${p.targetStatus} — approved`, `${name} · ${role}`, comment||p.reason);
+    toast("Status change approved", `${r.id} is now ${p.targetStatus}.`);
+    sb.from('rfq_rfqs').update({status:r.status, pending_status_change:null}).eq('id', r.id)
+      .then(({error})=>{ if(error){ console.error('rfq status approve persist failed', error); toast("Not saved to database", "The change shows locally but failed to save — check the console."); } });
+  } else {
+    r.pendingStatusChange = null;
+    logAudit(`${r.id} status change request rejected (would have been ${p.targetStatus})`, `${name} · ${role}`, comment);
+    toast("Request rejected", `${r.id} stays at ${r.status}.`);
+    sb.from('rfq_rfqs').update({pending_status_change:null}).eq('id', r.id)
+      .then(({error})=>{ if(error){ console.error('rfq status reject persist failed', error); toast("Not saved to database", "The change shows locally but failed to save — check the console."); } });
+  }
+  closeAll();
+  renderRfqs();
+  renderDashboard();
 }
 
 function submitApproval(isApprove){
@@ -1384,7 +1488,7 @@ async function initPublicPage(){
 
 /* Anonymous/public bootstrap — RLS itself restricts this to open/published RFQs only. */
 async function loadPublicData(){
-  const { data, error } = await sb.from('rfq_rfqs').select('*').order('created_at', {ascending:true});
+  const { data, error } = await sb.from('rfq_rfqs').select('id, title, category, status, budget, open_date, close_date, description, required_docs, attachments').order('created_at', {ascending:true});
   if(error){ console.error('public rfq load failed', error); toast("Working offline", "Couldn't load open tenders — check your connection."); return; }
   rfqs = (data||[]).map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:Number(r.budget), open:r.open_date, close:r.close_date, desc:r.description, requiredDocs:r.required_docs||[], attachments:r.attachments||[]}));
 }
@@ -1645,7 +1749,7 @@ async function loadFromSupabase(){
     (timelineByApplicant[t.applicant_id] = timelineByApplicant[t.applicant_id]||[]).push({date:t.event_date, action:t.action, actor:t.actor, note:t.note||''});
   });
 
-  rfqs = (rfqRes.data||[]).map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:Number(r.budget), open:r.open_date, close:r.close_date, desc:r.description, requiredDocs:r.required_docs||[], attachments:r.attachments||[]}));
+  rfqs = (rfqRes.data||[]).map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:Number(r.budget), open:r.open_date, close:r.close_date, desc:r.description, requiredDocs:r.required_docs||[], attachments:r.attachments||[], pendingStatusChange:r.pending_status_change||null}));
   applicants = (appRes.data||[]).map(a=>({id:a.id, rfq:a.rfq_id, business:a.business, companyRegNo:a.company_reg_no, name:a.contact_name, position:a.position, email:a.email, phone:a.phone, comments:a.comments, status:a.status, received:a.received_date, reason:a.reason, documents:a.documents||[], timeline: timelineByApplicant[a.id] || []}));
   audit = (auditRes.data||[]).map(e=>({ts: (e.ts||'').replace('T',' ').slice(0,16), action:e.action, who:e.who, note:e.note||''}));
 }
