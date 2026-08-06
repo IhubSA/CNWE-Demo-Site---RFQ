@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.19.0",
+  version: "2.20.0",
   date: "2026-08-06",
   changelog: [
+    "2.20.0 (2026-08-06) — No application on an RFQ can be reviewed, screened, validated, evaluated, scored, or commented on until that RFQ's closing date has passed — enforced at the database level, not just hidden in the interface. The only thing that can still be done to a still-open RFQ is extend its closing date, which requires a reason and immediately publishes a transparent notice on the public tender listing (previous date, new date, and why). Verified directly against the database: a fully-permissioned account is genuinely blocked from touching an applicant's status while the RFQ is open, and the exact same action succeeds the moment it closes.",
     "2.19.0 (2026-08-06) — Staff are now automatically signed out after 30 minutes of inactivity in the admin console (no mouse movement, clicks, keyboard input, or scrolling). A warning appears 2 minutes before it happens with a 'Stay signed in' option, so nobody gets logged out without notice. Verified the full timeline directly: no warning before 28 minutes, warning shown correctly at 28, confirming activity resets the clock, and the actual sign-out firing correctly at 30 with a clear message on the login screen explaining why.",
     "2.18.1 (2026-08-05) — Fixed a real layout bug on the new 'Set your password' screen: it was placed outside the main app container instead of inside it like the regular sign-in screen, which left a blank screen-height gap above the actual form, requiring a scroll to see it. It now appears immediately, no scrolling needed.",
     "2.18.0 (2026-08-05) — New employees must now set their own password the first time they sign in, replacing the admin-issued temporary one before they can access anything else. The old temporary password stops working the moment they do. Your own account is unaffected. Verified directly against the database that the self-service 'password changed' flag can only ever be cleared on a person's own account, never anyone else's.",
@@ -684,12 +685,13 @@ function renderRfqs(){
         <span class="badge ${rfqBadgeClass(r.status)}">${r.status}</span>
         ${r.pendingStatusChange ? `<div style="font-size:10.5px; color:var(--ink-3); margin-top:3px;">⏳ Pending: ${escapeAttr(r.pendingStatusChange.targetStatus)}</div>` : ''}
       </td>
-      <td class="mono">${r.open}</td><td class="mono">${r.close}</td>
+      <td class="mono">${r.open}</td><td class="mono">${r.close}${(r.extensionNotices&&r.extensionNotices.length) ? ` <span title="Extended ${r.extensionNotices.length}x">⏱</span>` : ''}</td>
       <td style="white-space:nowrap;">
         ${r.status==="Draft" && can('can_manage_rfqs') ? `<button class="btn small secondary" onclick="event.stopPropagation(); openEditRfq('${r.id}')">Edit</button>` : ''}
         ${r.status==="Draft" && can('can_publish_rfqs') ? `<button class="btn small gold" onclick="event.stopPropagation(); requestPublishRfq('${r.id}')">Publish</button>` : ''}
         ${r.pendingStatusChange && can('can_publish_rfqs') ? `<button class="btn small gold" onclick="event.stopPropagation(); openRfqStatusReview('${r.id}')">Review</button>` : ''}
         ${!r.pendingStatusChange && r.status!=="Draft" && can('can_manage_rfqs') ? `<button class="btn small secondary" onclick="event.stopPropagation(); openRfqStatusRequest('${r.id}')">Change status</button>` : ''}
+        ${["Open for Applications","Published"].includes(r.status) && can('can_publish_rfqs') ? `<button class="btn small secondary" onclick="event.stopPropagation(); openExtendDate('${r.id}')">Extend date</button>` : ''}
       </td></tr>`).join('') || `<tr><td colspan="8" style="text-align:center; color:var(--ink-3); padding:20px;">No RFQs match these filters.</td></tr>`}
   `;
 }
@@ -906,8 +908,10 @@ function renderEvaluationSection(a){
         <div class="field-row"><span class="k">Date</span><span class="mono">${(ev.evaluated_at||'').slice(0,10)}</span></div>
         ${ev.conflict_declared ? `<div class="field-row"><span class="k">Conflict declared</span><span class="badge rust">Yes${ev.conflict_notes? ' — '+escapeAttr(ev.conflict_notes):''}</span></div>` : ''}
       </div>
-      ${can('can_evaluate_approve') ? `<button class="btn small secondary" onclick="openEvaluationModal('${a.id}')">Re-evaluate</button>` : ''}
+      ${(can('can_evaluate_approve') && rfqIsClosed(a.rfq)) ? `<button class="btn small secondary" onclick="openEvaluationModal('${a.id}')">Re-evaluate</button>` : ''}
     `;
+  } else if(!rfqIsClosed(a.rfq)){
+    html += `<span style="font-size:12px; color:var(--ink-3);">This RFQ is still open — evaluation can't begin until it closes.</span>`;
   } else {
     html += can('can_evaluate_approve')
       ? `<button class="btn small gold" onclick="openEvaluationModal('${a.id}')">Evaluate this applicant</button>`
@@ -974,6 +978,12 @@ async function submitEvaluation(){
   renderRankings();
 }
 
+function rfqIsClosed(rfqId){
+  const r = rfqs.find(x=>x.id===rfqId);
+  if(!r || !r.close) return false;
+  return r.close < today();
+}
+
 async function openApplicant(id){
   const a = applicants.find(x=>x.id===id);
   if(!a) return;
@@ -1029,7 +1039,8 @@ async function openApplicant(id){
               <div class="dc-meta">${escapeAttr(c.author)}${c.date? ' · '+escapeAttr(c.date):''}</div>
             </div>`).join('') || `<div class="dc-empty">No comments yet.</div>`}
           <div class="doc-comment-add">
-            ${can('can_review_documents') ? `
+            ${!rfqIsClosed(a.rfq) ? `<span style="font-size:11px; color:var(--ink-3);">This RFQ closes ${rfqs.find(x=>x.id===a.rfq)?.close||''} — reviews and comments can't begin until then.</span>` :
+              can('can_review_documents') ? `
               <input type="text" class="doc-comment-input" id="new-comment-${d.docId}" placeholder="Add a review comment…" onkeydown="if(event.key==='Enter'){addDocComment('${a.id}','${d.docId}');}">
               <button class="btn small secondary" onclick="addDocComment('${a.id}','${d.docId}')">Add Comment</button>
             ` : `<span style="font-size:11px; color:var(--ink-3);">You don't have permission to add document comments.</span>`}
@@ -1041,7 +1052,10 @@ async function openApplicant(id){
   const nextStage = KANBAN_STAGES[KANBAN_STAGES.indexOf(a.status)+1];
   const canAny = can('can_screen_validate') || can('can_evaluate_approve') || can('can_manage_contracts') || can('can_review_documents');
 
-  if(a.status==="Unsuccessful"||a.status==="Closed"){
+  if(a.status!=="Unsuccessful" && a.status!=="Closed" && !rfqIsClosed(a.rfq)){
+    const closeDate = rfqs.find(x=>x.id===a.rfq)?.close || 'its closing date';
+    actionsEl.innerHTML = `<div style="font-size:12px; color:var(--ink-2); background:var(--paper-2); border-radius:var(--radius); padding:10px 12px; width:100%;">⏳ This RFQ is still open for applications until <strong>${closeDate}</strong>. No reviews, decisions, or scoring can happen on any applicant until it closes — this keeps the process fair to everyone still applying.</div>`;
+  } else if(a.status==="Unsuccessful"||a.status==="Closed"){
     actionsEl.innerHTML = `<span style="font-size:12px;color:var(--ink-3);">Case closed — no further stage changes.</span>`;
   } else if(a.status==="Awaiting Signature"){
     if(can('can_manage_contracts')){
@@ -1265,6 +1279,39 @@ function resolveRfqStatusRequest(isApprove){
   closeAll();
   renderRfqs();
   renderDashboard();
+}
+
+let extendingRfqId = null;
+function openExtendDate(rfqId){
+  const r = rfqs.find(x=>x.id===rfqId);
+  if(!r) return;
+  extendingRfqId = rfqId;
+  document.getElementById('ext-context').textContent = `${r.id} — ${r.title} — currently closes ${r.close}`;
+  document.getElementById('ext-new-date').value = '';
+  document.getElementById('ext-new-date').min = r.close;
+  document.getElementById('ext-reason').value = '';
+  document.getElementById('modal-extend-date').classList.add('active');
+  document.getElementById('overlay').classList.add('active');
+}
+function submitExtendDate(){
+  const r = rfqs.find(x=>x.id===extendingRfqId);
+  if(!r) return;
+  const newDate = document.getElementById('ext-new-date').value;
+  const reason = document.getElementById('ext-reason').value.trim();
+  if(!newDate){ toast("New date required", "Please choose the new closing date."); return; }
+  if(newDate <= r.close){ toast("Date must be later", `The new date must be after the current closing date (${r.close}).`); return; }
+  if(!reason){ toast("Reason required", "Please explain why the closing date is being extended — this is shown publicly."); return; }
+
+  const notice = { previousDate:r.close, newDate, reason, extendedBy:(currentEmployee&&currentEmployee.email)||'Unknown', extendedAt:new Date().toISOString() };
+  const previousClose = r.close;
+  r.extensionNotices = [...(r.extensionNotices||[]), notice];
+  r.close = newDate;
+  logAudit(`${r.id} closing date extended from ${previousClose} to ${newDate}`, (currentEmployee&&currentEmployee.email)||'Unknown', reason);
+  closeAll();
+  renderRfqs();
+  toast("Closing date extended", `${r.id} now closes ${newDate}. A public notice has been published.`);
+  sb.from('rfq_rfqs').update({close_date:r.close, extension_notices:r.extensionNotices}).eq('id', r.id)
+    .then(({error})=>{ if(error){ console.error('extend date persist failed', error); toast("Not saved to database", "The change shows locally but failed to save — check the console."); } });
 }
 
 /* ============================================================
@@ -1565,6 +1612,10 @@ async function renderPublic(){
     <div class="prfq-card">
       <h3>${r.title}</h3>
       <div class="meta">${r.id} · ${r.category} · Closes ${r.close}</div>
+      ${(r.extensionNotices&&r.extensionNotices.length) ? `
+        <div style="background:#FCF3DE; border:1px solid var(--gold); border-radius:var(--radius); padding:8px 10px; margin:8px 0 12px 0; font-size:12.5px; color:var(--ink);">
+          ${r.extensionNotices.map(n=>`<div style="margin-bottom:4px;"><strong>⏱ Closing date extended</strong> from ${n.previousDate} to ${n.newDate}. Reason: ${escapeAttr(n.reason)}</div>`).join('')}
+        </div>` : ''}
       <div class="desc">${r.desc}</div>
       ${(r.attachments&&r.attachments.length) ? `
         <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); margin-bottom:5px;">Tender documents</div>
@@ -1856,9 +1907,9 @@ async function initPublicPage(){
 
 /* Anonymous/public bootstrap — RLS itself restricts this to open/published RFQs only. */
 async function loadPublicData(){
-  const { data, error } = await sb.from('rfq_rfqs').select('id, title, category, status, budget, open_date, close_date, description, required_docs, attachments').order('created_at', {ascending:true});
+  const { data, error } = await sb.from('rfq_rfqs').select('id, title, category, status, budget, open_date, close_date, description, required_docs, attachments, extension_notices').order('created_at', {ascending:true});
   if(error){ console.error('public rfq load failed', error); toast("Working offline", "Couldn't load open tenders — check your connection."); return; }
-  rfqs = (data||[]).map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:Number(r.budget), open:r.open_date, close:r.close_date, desc:r.description, requiredDocs:r.required_docs||[], attachments:r.attachments||[]}));
+  rfqs = (data||[]).map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:Number(r.budget), open:r.open_date, close:r.close_date, desc:r.description, requiredDocs:r.required_docs||[], attachments:r.attachments||[], extensionNotices:r.extension_notices||[]}));
 }
 
 /* Signed-in admin bootstrap — full read access, seeds a genuinely empty database. */
@@ -2117,7 +2168,7 @@ async function loadFromSupabase(){
     (timelineByApplicant[t.applicant_id] = timelineByApplicant[t.applicant_id]||[]).push({date:t.event_date, action:t.action, actor:t.actor, note:t.note||''});
   });
 
-  rfqs = (rfqRes.data||[]).map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:Number(r.budget), open:r.open_date, close:r.close_date, desc:r.description, requiredDocs:r.required_docs||[], attachments:r.attachments||[], pendingStatusChange:r.pending_status_change||null}));
+  rfqs = (rfqRes.data||[]).map(r=>({id:r.id, title:r.title, category:r.category, status:r.status, budget:Number(r.budget), open:r.open_date, close:r.close_date, desc:r.description, requiredDocs:r.required_docs||[], attachments:r.attachments||[], pendingStatusChange:r.pending_status_change||null, extensionNotices:r.extension_notices||[]}));
   applicants = (appRes.data||[]).map(a=>({id:a.id, rfq:a.rfq_id, business:a.business, companyRegNo:a.company_reg_no, name:a.contact_name, position:a.position, email:a.email, phone:a.phone, comments:a.comments, status:a.status, received:a.received_date, reason:a.reason, documents:a.documents||[], timeline: timelineByApplicant[a.id] || []}));
   audit = (auditRes.data||[]).map(e=>({ts: (e.ts||'').replace('T',' ').slice(0,16), action:e.action, who:e.who, note:e.note||''}));
 }
