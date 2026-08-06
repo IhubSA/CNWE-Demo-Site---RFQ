@@ -348,6 +348,16 @@
   </div>
 </div>
 
+<div class="modal" id="modal-idle-warning">
+  <div class="modal-head"><h3>Still there?</h3></div>
+  <div class="modal-body">
+    <p style="margin:0; font-size:13.5px; color:var(--ink-2); line-height:1.6;">You've been inactive for a while. For security, you'll be automatically signed out in about 2 minutes unless you confirm you're still here.</p>
+  </div>
+  <div class="modal-foot">
+    <button class="btn gold" style="width:100%;" onclick="resetIdleTimer(); closeAll();">Stay signed in</button>
+  </div>
+</div>
+
 <div class="modal" id="modal-evaluation">
   <div class="modal-head"><h3>Evaluate applicant</h3><button class="drawer-close" style="position:static;" onclick="closeAll()">✕</button></div>
   <div class="modal-body">

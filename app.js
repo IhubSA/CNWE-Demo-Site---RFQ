@@ -9,9 +9,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    VERSION
    ============================================================ */
 const VERSION_INFO = {
-  version: "2.18.1",
-  date: "2026-08-05",
+  version: "2.19.0",
+  date: "2026-08-06",
   changelog: [
+    "2.19.0 (2026-08-06) — Staff are now automatically signed out after 30 minutes of inactivity in the admin console (no mouse movement, clicks, keyboard input, or scrolling). A warning appears 2 minutes before it happens with a 'Stay signed in' option, so nobody gets logged out without notice. Verified the full timeline directly: no warning before 28 minutes, warning shown correctly at 28, confirming activity resets the clock, and the actual sign-out firing correctly at 30 with a clear message on the login screen explaining why.",
     "2.18.1 (2026-08-05) — Fixed a real layout bug on the new 'Set your password' screen: it was placed outside the main app container instead of inside it like the regular sign-in screen, which left a blank screen-height gap above the actual form, requiring a scroll to see it. It now appears immediately, no scrolling needed.",
     "2.18.0 (2026-08-05) — New employees must now set their own password the first time they sign in, replacing the admin-issued temporary one before they can access anything else. The old temporary password stops working the moment they do. Your own account is unaffected. Verified directly against the database that the self-service 'password changed' flag can only ever be cleared on a person's own account, never anyone else's.",
     "2.17.0 (2026-08-05) — Added real evaluation scoring, replacing what used to just be a status label. Fixed criteria (Price 30, Technical capability 25, Experience 20, B-BBEE/local contribution 15, Compliance 10 — 100 points total) scored by one evaluator per applicant, with an optional conflict-of-interest declaration. A new 'Scores & ranking' panel on the Approvals page ranks every evaluated applicant within their own RFQ from highest to lowest, so a recommendation points to a number rather than a preference. Scoring is gated behind the existing Evaluate & Approve permission — verified directly against the database, same as every other permission split in this system.",
@@ -266,8 +267,10 @@ function showAdmin(){
   if(cpView) cpView.style.display = 'none';
   document.getElementById('sidebar').style.display='flex';
   document.getElementById('admin-main').style.display='block';
+  startIdleWatcher();
 }
 function showLogin(){
+  stopIdleWatcher();
   document.getElementById('sidebar').style.display='none';
   document.getElementById('admin-main').style.display='none';
   const cpView = document.getElementById('change-password-view');
@@ -381,6 +384,47 @@ if(btnSignout) btnSignout.addEventListener('click', async ()=>{
   await sb.auth.signOut();
   window.location.href = 'index.html';
 });
+
+/* ---- Idle timeout: auto sign-out after 30 minutes of inactivity, with a 2-minute warning ---- */
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const IDLE_WARNING_MS = 2 * 60 * 1000;
+let lastActivityAt = Date.now();
+let idleCheckInterval = null;
+let idleWarningShown = false;
+function resetIdleTimer(){
+  lastActivityAt = Date.now();
+  idleWarningShown = false;
+}
+function startIdleWatcher(){
+  ['mousemove','mousedown','keydown','scroll','touchstart','click'].forEach(evt=>{
+    document.addEventListener(evt, resetIdleTimer, {passive:true});
+  });
+  resetIdleTimer();
+  if(idleCheckInterval) clearInterval(idleCheckInterval);
+  idleCheckInterval = setInterval(checkIdleStatus, 10000);
+}
+function stopIdleWatcher(){
+  if(idleCheckInterval){ clearInterval(idleCheckInterval); idleCheckInterval = null; }
+}
+function checkIdleStatus(){
+  const elapsed = Date.now() - lastActivityAt;
+  if(elapsed >= IDLE_TIMEOUT_MS){
+    performIdleLogout();
+  } else if(elapsed >= IDLE_TIMEOUT_MS - IDLE_WARNING_MS && !idleWarningShown){
+    idleWarningShown = true;
+    const modal = document.getElementById('modal-idle-warning');
+    if(modal){ modal.classList.add('active'); document.getElementById('overlay').classList.add('active'); }
+  }
+}
+async function performIdleLogout(){
+  stopIdleWatcher();
+  closeAll();
+  await sb.auth.signOut();
+  currentEmployee = null;
+  showLogin();
+  const errEl = document.getElementById('login-error');
+  if(errEl){ errEl.textContent = "You were signed out after 30 minutes of inactivity."; errEl.style.display = 'block'; }
+}
 
 /* ---- admin.html only: "Install as desktop app" ---- */
 let deferredInstallPrompt = null;
